@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  /* Cyber/Crypto Theme */
+  --background: #050505; /* Deep Black */
+  --foreground: #ededed;
+  
+  /* Neon Accents */
+  --primary: #00ff9d;   /* Neon Green */
+  --secondary: #bd00ff; /* Neon Purple */
+  --accent: #00f3ff;    /* Cyan */
+  
+  --card-bg: #111111;
+  --border-color: #333333;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Glowing Orbs for Cyber Vibe */
+@keyframes orb-float-1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.4;
+    background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+  }
+  50% {
+    transform: translate(30px, -50px) scale(1.2);
+    opacity: 0.6;
+  }
+}
+
+@keyframes orb-float-2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.3;
+    background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
+  }
+  50% {
+    transform: translate(-40px, 30px) scale(1.1);
+    opacity: 0.5;
+  }
+}
+
+@keyframes orb-float-3 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.3;
+    background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+  }
+  50% {
+    transform: translate(20px, 40px) scale(0.9);
+    opacity: 0.5;
+  }
+}
+
+.animate-orb-1 {
+  animation: orb-float-1 8s infinite ease-in-out;
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: -1;
+  top: -50px;
+  left: -50px;
+  background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+}
+
+.animate-orb-2 {
+  animation: orb-float-2 12s infinite ease-in-out reverse;
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  filter: blur(90px);
+  z-index: -1;
+  bottom: -100px;
+  right: -100px;
+  background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
+}
+
+.animate-orb-3 {
+  animation: orb-float-3 15s infinite ease-in-out;
+  position: absolute;
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  filter: blur(70px);
+  z-index: -1;
+  top: 40%;
+  left: 40%;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+}
