@@ -59,11 +59,20 @@ export async function createMovement(params: CreateMovementParams) {
     // 0. Auto-assign default account if none specified (and no card)
     let finalAccountId = accountId;
     if (!finalAccountId && !cardId && (type === 'income' || type === 'expense')) {
-        const { getDefaultAccount } = await import('./assets');
-        const defaultAccount = await getDefaultAccount();
+        const { getDefaultAccount, getOrCreateWallet } = await import('./assets');
+        let defaultAccount = await getDefaultAccount();
+
+        // If no default account exists, create/get the wallet
+        if (!defaultAccount) {
+            console.log('createMovement: No default account found, creating wallet...');
+            defaultAccount = await getOrCreateWallet();
+        }
 
         if (defaultAccount) {
             finalAccountId = defaultAccount.id;
+        } else {
+            // This should never happen, but log if it does
+            console.error('createMovement: CRITICAL - Could not get or create default account!');
         }
     }
 

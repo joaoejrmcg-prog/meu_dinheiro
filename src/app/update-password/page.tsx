@@ -97,7 +97,7 @@ export default function UpdatePasswordPage() {
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="••••••••"
+                                    placeholder="Digite sua nova senha"
                                     className="w-full p-3 pl-10 bg-neutral-950/50 border border-neutral-800 rounded-xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all text-neutral-200 placeholder:text-neutral-600"
                                     required
                                 />
@@ -112,7 +112,7 @@ export default function UpdatePasswordPage() {
                                     type="password"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    placeholder="••••••••"
+                                    placeholder="Repita a nova senha"
                                     className="w-full p-3 pl-10 bg-neutral-950/50 border border-neutral-800 rounded-xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all text-neutral-200 placeholder:text-neutral-600"
                                     required
                                 />
@@ -122,8 +122,8 @@ export default function UpdatePasswordPage() {
 
                         {message && (
                             <div className={`p-3 rounded-lg border text-xs text-center ${message.type === 'success'
-                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                    : 'bg-red-500/10 border-red-500/20 text-red-400'
+                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                : 'bg-red-500/10 border-red-500/20 text-red-400'
                                 }`}>
                                 {message.text}
                             </div>

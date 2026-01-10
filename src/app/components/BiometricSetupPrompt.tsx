@@ -22,7 +22,7 @@ export default function BiometricSetupPrompt({
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-white">Login Mais Rá pido</h2>
+                    <h2 className="text-xl font-bold text-white">Login Mais Rápido</h2>
                     <button
                         onClick={onSkip}
                         disabled={isLoading}

@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Sparkles, ArrowRight, Fingerprint } from "lucide-react";
+import { Loader2, Sparkles, ArrowRight, Fingerprint, Eye, EyeOff } from "lucide-react";
 import { getURL } from "../lib/utils";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import BiometricSetupPrompt from "../components/BiometricSetupPrompt";
@@ -14,6 +14,8 @@ function LoginForm() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const searchParams = useSearchParams();
     const referralCode = searchParams.get('ref');
     const [mode, setMode] = useState<'login' | 'signup'>(referralCode ? 'signup' : 'login');
@@ -249,27 +251,45 @@ function LoginForm() {
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-xs font-medium text-neutral-400 ml-1">Senha</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
-                                className="w-full p-3 bg-neutral-800/60 border border-neutral-700 rounded-xl focus:border-green-500 focus:ring-1 focus:ring-green-500/50 outline-none transition-all text-neutral-200 placeholder:text-neutral-500"
-                                required
-                            />
+                            <label className="text-xs font-medium text-neutral-400 ml-1">{mode === 'login' ? 'Senha' : 'Crie uma senha'}</label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder={mode === 'login' ? '••••••••' : 'Digite sua senha'}
+                                    className="w-full p-3 pr-10 bg-neutral-800/60 border border-neutral-700 rounded-xl focus:border-green-500 focus:ring-1 focus:ring-green-500/50 outline-none transition-all text-neutral-200 placeholder:text-neutral-500"
+                                    required
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors"
+                                >
+                                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </div>
                         {mode === 'signup' && (
                             <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
-                                <label className="text-xs font-medium text-neutral-400 ml-1">Confirmar Senha</label>
-                                <input
-                                    type="password"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    placeholder="••••••••"
-                                    className="w-full p-3 bg-neutral-800/60 border border-neutral-700 rounded-xl focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 outline-none transition-all text-neutral-200 placeholder:text-neutral-500"
-                                    required
-                                />
+                                <label className="text-xs font-medium text-neutral-400 ml-1">Confirme sua senha</label>
+                                <div className="relative">
+                                    <input
+                                        type={showConfirmPassword ? "text" : "password"}
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        placeholder="Repita a senha"
+                                        className="w-full p-3 pr-10 bg-neutral-800/60 border border-neutral-700 rounded-xl focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 outline-none transition-all text-neutral-200 placeholder:text-neutral-500"
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors"
+                                    >
+                                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
                             </div>
                         )}
                         <div className="flex justify-end">

@@ -34,30 +34,41 @@ export default function TermsModal() {
     }, []);
 
     const checkStatus = async () => {
+        console.log('TermsModal: checkStatus called');
         try {
             // Check localStorage first as fallback
             const localAccepted = localStorage.getItem('terms_accepted_v1');
+            console.log('TermsModal: localStorage terms_accepted_v1 =', localAccepted);
             if (localAccepted === 'true') {
+                console.log('TermsModal: Already accepted via localStorage, not showing modal');
                 setHasAccepted(true);
                 setLoading(false);
                 return;
             }
 
+            console.log('TermsModal: Calling checkTermsAccepted server action...');
             const accepted = await checkTermsAccepted();
+            console.log('TermsModal: checkTermsAccepted returned:', accepted);
             setHasAccepted(accepted);
 
             if (accepted) {
                 // Store in localStorage for faster future checks
                 localStorage.setItem('terms_accepted_v1', 'true');
+                console.log('TermsModal: Terms already accepted in DB, not showing modal');
             } else {
+                console.log('TermsModal: Terms NOT accepted, opening modal');
                 setIsOpen(true);
             }
         } catch (error) {
-            console.error('Error checking terms:', error);
-            // Don't block user on error
+            console.error('TermsModal: Error checking terms:', error);
+            // On error, check localStorage - if not accepted, show modal
             const localAccepted = localStorage.getItem('terms_accepted_v1');
             if (localAccepted === 'true') {
                 setHasAccepted(true);
+            } else {
+                // New user or error - show terms modal to be safe
+                console.log('TermsModal: Error occurred and no localStorage, opening modal');
+                setIsOpen(true);
             }
         } finally {
             setLoading(false);
@@ -80,6 +91,9 @@ export default function TermsModal() {
             localStorage.setItem('terms_accepted_v1', 'true');
             setHasAccepted(true);
             setIsOpen(false);
+
+            // Dispatch event to notify other components (like CommandCenter) that terms were accepted
+            window.dispatchEvent(new CustomEvent('terms-accepted'));
         } catch (error) {
             console.error('Error accepting terms:', error);
             alert('Erro ao aceitar os termos. Tente novamente.');

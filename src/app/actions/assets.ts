@@ -117,6 +117,49 @@ export async function setDefaultAccount(id: string) {
 }
 
 /**
+ * Get the user's wallet, or create one if it doesn't exist.
+ * This ensures that every user always has at least one account.
+ */
+export async function getOrCreateWallet(): Promise<Account | null> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // First try to get existing wallet
+    const { data: wallet } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('type', 'wallet')
+        .limit(1)
+        .single();
+
+    if (wallet) return wallet;
+
+    // No wallet found, create one
+    console.log('getOrCreateWallet: Creating wallet for user', user.id);
+    const { data: newWallet, error: createError } = await supabase
+        .from('accounts')
+        .insert({
+            user_id: user.id,
+            name: 'Carteira',
+            type: 'wallet',
+            balance: 0,
+            initial_balance: 0,
+            is_default: true
+        })
+        .select()
+        .single();
+
+    if (createError) {
+        console.error('getOrCreateWallet: Error creating wallet:', createError);
+        return null;
+    }
+
+    return newWallet;
+}
+
+/**
  * Define o saldo inicial da Carteira do usuário
  * Usado no tutorial de onboarding
  * O initial_balance é tratado como "sobra do mês anterior", não como receita

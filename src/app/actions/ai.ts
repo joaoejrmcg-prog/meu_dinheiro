@@ -129,7 +129,7 @@ const LEVEL_KEYWORDS = {
   // Level 2+ features
   transfer: ['transferi', 'transferir', 'transferência', 'passei pro', 'passei pra', 'movi pro', 'movi pra', 'moveu pro', 'moveu pra'],
   accounts: ['nubank', 'itaú', 'itau', 'bradesco', 'caixa', 'santander', 'inter', 'c6', 'picpay', 'mercado pago', 'conta bancária', 'banco'],
-  recurring: ['recorrente', 'todo mês', 'mensal', 'mensalmente', 'recorrência'],
+  recurring: ['recorrente', 'todo mês', 'mensal', 'mensalmente', 'recorrência', 'agendar', 'agendamento', 'agendei', 'programar', 'programei', 'lembrete', 'até dia', 'até o dia', 'de hoje até', 'até 202'],
   // Level 3+ features  
   creditCard: ['cartão', 'cartao', 'crédito', 'credito', 'fatura', 'parcelei', 'parcelado', 'parcelas', 'em x vezes', 'em 2x', 'em 3x', 'em 4x', 'em 5x', 'em 6x', 'em 10x', 'em 12x'],
   loan: ['empréstimo', 'emprestimo', 'emprestei', 'emprestado', 'devo', 'dívida', 'divida', 'peguei emprestado', 'me emprestou'],
@@ -143,9 +143,9 @@ const LEVEL_KEYWORDS = {
 const FRIENDLY_BLOCKS: Record<string, string> = {
   transfer: "Que bom que você tá organizando! 😊 Por enquanto, anota isso como você fazia antes. Primeiro, vamos ficar craques em registrar o dinheiro do dia a dia. Logo, logo vamos fazer tudo por aqui!",
   accounts: "Boa! Você já tá pensando em organizar suas contas. 🏦 Por agora, anota como fazia antes. Primeiro vamos dominar o básico juntos, e logo você vai poder fazer tudo isso aqui!",
-  recurring: "Olha só, já pensando em contas fixas! 📅 Por enquanto, me avisa quando pagar cada uma. Logo, logo vou te ajudar a automatizar isso!",
+  recurring: "Boa ideia! 📅 Agendamentos e lembretes estão chegando em breve. Por enquanto, me avisa quando pagar cada conta que eu registro pra você. Logo, logo vou te lembrar automaticamente!",
   creditCard: "Entendi! 💳 Por enquanto, anota o valor que você gastou normalmente. Tipo: \"Gastei 50 no mercado\". Em breve a gente organiza seus cartões juntos!",
-  loan: "Anotado mentalmente! 📝 Por enquanto, continua controlando isso como fazia antes. Logo vamos organizar empréstimos e dívidas juntos aqui!",
+  loan: "Anotado! 📝 Por enquanto, continua controlando isso como fazia antes. Logo vamos organizar empréstimos e dívidas juntos aqui!",
   goals: "Que legal que você já pensa em metas! 🎯 Continua registrando seu dia a dia que logo vamos montar seus objetivos juntos!",
   simulation: "Adoro a curiosidade! 🔮 Primeiro vamos conhecer bem seus gastos, e aí as simulações vão fazer muito mais sentido!",
 };

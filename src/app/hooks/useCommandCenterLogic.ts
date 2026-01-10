@@ -34,7 +34,6 @@ export function useCommandCenterLogic() {
     const tutorialStartedRef = useRef(false);
 
     // Load initial state
-    // Load initial state
     useEffect(() => {
         let isMounted = true;
         let timeout1: NodeJS.Timeout;
@@ -50,6 +49,15 @@ export function useCommandCenterLogic() {
 
             // Only start tutorial if level is 0 AND we haven't started it yet AND there are no messages
             if (level === 0) {
+                // Check if terms are accepted before starting tutorial
+                const termsAccepted = localStorage.getItem('terms_accepted_v1') === 'true';
+
+                if (!termsAccepted) {
+                    // Wait for terms to be accepted before starting tutorial
+                    console.log('Waiting for terms acceptance before starting tutorial...');
+                    return;
+                }
+
                 if (tutorialStartedRef.current) return;
                 tutorialStartedRef.current = true;
 
@@ -96,9 +104,18 @@ export function useCommandCenterLogic() {
 
         init();
 
+        // Listen for terms acceptance event to start tutorial
+        const handleTermsAccepted = () => {
+            console.log('Terms accepted, checking if should start tutorial...');
+            // Re-run init to start tutorial if level is 0
+            init();
+        };
+        window.addEventListener('terms-accepted', handleTermsAccepted);
+
         return () => {
             isMounted = false;
             clearTimeout(timeout1);
+            window.removeEventListener('terms-accepted', handleTermsAccepted);
         };
     }, []);
 
