@@ -29,7 +29,6 @@ export const metadata: Metadata = {
 };
 
 import ClientLayout from "./components/ClientLayout";
-import TermsModal from "./components/TermsModal";
 
 export default function RootLayout({
   children,
@@ -43,7 +42,6 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ClientLayout>
-          <TermsModal />
           {children}
         </ClientLayout>
       </body>

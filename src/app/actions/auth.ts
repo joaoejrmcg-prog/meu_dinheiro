@@ -51,13 +51,19 @@ export async function checkTermsAccepted() {
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return true; // Se não estiver logado, não bloqueia (ou trata no middleware)
+    if (!user) return false; // Se não estiver logado, exige aceitar termos após login
 
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
         .from('profiles')
         .select('terms_accepted_at')
         .eq('user_id', user.id)
         .single();
 
-    return !!profile?.terms_accepted_at;
+    // Se não encontrou profile ou houve erro, exige aceitar termos
+    if (error || !profile) {
+        console.log('checkTermsAccepted: No profile found for user, requiring terms acceptance');
+        return false;
+    }
+
+    return !!profile.terms_accepted_at;
 }
