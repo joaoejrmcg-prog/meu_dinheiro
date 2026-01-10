@@ -38,58 +38,67 @@ export function useCommandCenterLogic() {
     useEffect(() => {
         let isMounted = true;
         let timeout1: NodeJS.Timeout;
-        let timeout2: NodeJS.Timeout;
 
-        getDailyUsage().then(count => {
-            if (isMounted) setUsageCount(count);
-        });
-
-        getUserLevel().then((level) => {
+        const init = async () => {
+            const count = await getDailyUsage();
             if (!isMounted) return;
+            setUsageCount(count);
 
+            const level = await getUserLevel();
+            if (!isMounted) return;
             setUserLevel(level);
-            // Show appropriate initial message
+
+            // Only start tutorial if level is 0 AND we haven't started it yet AND there are no messages
             if (level === 0) {
                 if (tutorialStartedRef.current) return;
                 tutorialStartedRef.current = true;
 
-                // Auto-start tutorial for level 0
-                setMessages([]);
-                // Small delay to let component mount
-                timeout1 = setTimeout(() => {
-                    if (!isMounted) return;
-                    setTutorialStep('GREETING');
-                    setMessages([{
-                        id: Math.random().toString(36).substring(7),
+                setTutorialStep('GREETING');
+
+                // Use functional update to avoid race conditions
+                setMessages(prev => {
+                    if (prev.length > 0) return prev; // Don't overwrite if already has messages
+                    return [{
+                        id: 'tutorial-greeting', // Fixed ID to prevent duplicates
                         role: 'assistant',
                         content: 'Oi 😊\nSou seu agente financeiro.\nVamos começar só com o básico: ver quanto entra e quanto sai.\nDepois eu te mostro outras coisas.',
                         isTyping: true
-                    }]);
-                    // After greeting, ask for balance
-                    timeout2 = setTimeout(() => {
-                        if (!isMounted) return;
-                        setTutorialStep('ASK_BALANCE');
-                        setMessages(prev => [...prev, {
-                            id: Math.random().toString(36).substring(7),
+                    }];
+                });
+
+                // After greeting, ask for balance
+                timeout1 = setTimeout(() => {
+                    if (!isMounted) return;
+                    setTutorialStep('ASK_BALANCE');
+                    setMessages(prev => {
+                        // Check if we already have the balance question
+                        if (prev.some(m => m.id === 'tutorial-balance')) return prev;
+
+                        return [...prev, {
+                            id: 'tutorial-balance', // Fixed ID
                             role: 'assistant',
                             content: 'Me diga: quanto dinheiro você tem disponível pra usar e pagar suas contas?\n\n💡 Se não tiver certeza, chuta! Podemos corrigir depois.',
                             isTyping: true
-                        }]);
-                    }, 5000);
-                }, 500);
+                        }];
+                    });
+                }, 5000);
             } else {
-                setMessages([{
-                    id: '1',
-                    role: 'assistant',
-                    content: 'Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?'
-                }]);
+                setMessages(prev => {
+                    if (prev.length > 0) return prev;
+                    return [{
+                        id: 'welcome-msg',
+                        role: 'assistant',
+                        content: 'Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?'
+                    }];
+                });
             }
-        });
+        };
+
+        init();
 
         return () => {
             isMounted = false;
             clearTimeout(timeout1);
-            clearTimeout(timeout2);
         };
     }, []);
 

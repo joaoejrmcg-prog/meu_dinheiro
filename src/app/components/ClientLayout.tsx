@@ -6,6 +6,7 @@ import Header from "./Header";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import TermsModal from "./TermsModal";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -126,6 +127,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
                     {children}
                 </main>
             </div>
+            <TermsModal />
         </div>
     );
 }
