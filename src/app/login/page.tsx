@@ -153,14 +153,24 @@ function LoginForm() {
                 }
             }
         } catch (err: any) {
-            console.error(err);
+            console.error('Auth error:', err);
             if (err.message === "User already registered") {
                 setError("Este email já está cadastrado. Tente fazer login.");
             } else if (err.message === "Invalid login credentials") {
                 setError("Email ou senha incorretos.");
+            } else if (err.message?.includes("Password should be at least")) {
+                setError("A senha deve ter pelo menos 6 caracteres.");
+            } else if (err.message?.includes("Unable to validate email")) {
+                setError("Email inválido. Verifique o formato.");
+            } else if (err.message?.includes("Email rate limit")) {
+                setError("Muitas tentativas. Aguarde alguns minutos.");
+            } else if (err.message?.includes("Signup is disabled")) {
+                setError("Cadastro de novos usuários está desabilitado.");
+            } else if (err.message?.includes("fetch")) {
+                setError("Erro de conexão. Verifique sua internet.");
             } else {
-                setError("Ocorreu um erro ao tentar entrar. Verifique suas credenciais.");
-                console.error(err); // Keep logging for debugging but don't show raw error to user always
+                // Show actual error for debugging in production
+                setError(err.message || "Ocorreu um erro ao tentar entrar.");
             }
         } finally {
             setLoading(false);
