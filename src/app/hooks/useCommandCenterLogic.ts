@@ -291,6 +291,55 @@ export function useCommandCenterLogic() {
             return;
         }
 
+        // Check for cancel/restart commands
+        const cancelKeywords = [
+            'cancela', 'cancelar', 'deixa pra lá', 'deixa pra la', 'esquece',
+            'me enganei', 'começar de novo', 'comecar de novo', 'reiniciar',
+            'era isso não', 'era isso nao', 'não era isso', 'nao era isso',
+            'para', 'parar', 'abortar', 'desiste', 'desistir'
+        ];
+
+        const isCancelCommand = cancelKeywords.some(keyword => lowerInput.includes(keyword));
+
+        if (isCancelCommand) {
+            // Just add a cancel message instead of clearing everything
+            addMessage('assistant', '👍 Ok, cancelado! O que você quer fazer agora?', 'text');
+            setTutorialStep('IDLE');
+            return;
+        }
+
+        // Check for undo/delete last commands
+        const undoKeywords = [
+            'apagar ultimo', 'apagar último', 'desfazer', 'desfaz',
+            'apaga o ultimo', 'apaga o último', 'cancela o ultimo', 'cancela o último',
+            'excluir ultimo', 'excluir último', 'remove o ultimo', 'remove o último'
+        ];
+
+        const isUndoCommand = undoKeywords.some(keyword => lowerInput.includes(keyword));
+
+        if (isUndoCommand) {
+            const { getLastMovement, deleteMovement } = await import('../actions/financial');
+            const lastMov = await getLastMovement();
+
+            if (!lastMov) {
+                addMessage('assistant', 'Não encontrei nenhum lançamento recente para apagar.', 'error');
+                return;
+            }
+
+            // Delete it
+            await deleteMovement(lastMov.id);
+
+            // Notify user
+            const amountFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lastMov.amount);
+            addMessage('assistant', `🗑️ Apaguei o último lançamento: ${lastMov.description} (${amountFormatted}).`, 'success');
+
+            // Refresh dashboard
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('transactionUpdated'));
+            }
+            return;
+        }
+
         // If in tutorial, process tutorial input
         if (tutorialStep !== 'IDLE') {
             const handled = await processTutorialInput(userInput);

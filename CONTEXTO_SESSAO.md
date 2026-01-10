@@ -1,56 +1,33 @@
-# 🔄 Contexto para Nova Sessão - Meu Dinheiro
+# Contexto da Sessão
 
-## 📅 Data: 2026-01-10 (Sessão 4 - RESOLVIDO!)
+## 📌 Últimas Alterações (Sessão Atual)
 
----
+### 1. Correções Críticas
+- **Bug `account_id` NULL:** Corrigido. Se não houver conta padrão, o sistema agora cria/busca automaticamente uma conta "Carteira" (`getOrCreateWallet`) para garantir que nenhum movimento fique órfão.
+- **Trial de 7 Dias:** Confirmado que a regra está no banco de dados (`handle_new_user_subscription`).
 
-## ✅ PROBLEMA RESOLVIDO: Deploy Automático Vercel FUNCIONANDO!
+### 2. Melhorias de UX (IA & Chat)
+- **Comando "Cancela":** Intercepta palavras como "cancela", "esquece", "me enganei". Não apaga o histórico, apenas confirma o cancelamento e para o processamento.
+- **Comando "Desfazer":** Intercepta "apagar último", "desfazer". Busca o último movimento do usuário e o deleta, confirmando a ação.
+- **UI da IA:**
+  - Fundo menos escuro (`#1a1a1a`) para melhor leitura.
+  - Mensagens do usuário em azul sólido para diferenciar da IA.
+  - Indicador "🎤 Ouvindo..." visível acima do input quando o microfone está ativo.
+  - **Cabeçalho:** Agora mostra Status/Créditos na esquerda e Plano/Vencimento na direita.
 
-### Solução Final (após horas de tentativas):
-1. ✅ Criar repositório **NOVO** no GitHub com nome diferente: `meu_dinheiro`
-2. ✅ Adicionar `jaimerodriguesjunior-ptbr` como **colaborador** no repositório
-3. ✅ Reconfigurar remote local: `git remote remove origin` + `git remote add origin`
-4. ✅ Importar projeto **NOVO** no Vercel
-
-### Configuração Atual:
-- **Repositório GitHub**: `joaoejrmcg-prog/meu_dinheiro`
-- **Colaborador**: `jaimerodriguesjunior-ptbr` (aceito)
-- **Git local**: `jaimerodriguesjunior@outlook.com`
-- **Projeto Vercel**: `meu_dinheiro` - Deploy automático **FUNCIONANDO**
-
-### Por que funcionou:
-- Nome novo eliminou qualquer cache/fantasma de configurações antigas
-- Adicionar colaborador resolveu o erro de permissão do Vercel CLI
+### 3. Comportamento da IA
+- **Prompt Ajustado:** A IA agora age como um assistente que "anota" (ex: "✅ Anotado: Gastei R$ 50..."), sem repetir o que o usuário disse e sem fazer perguntas de follow-up desnecessárias ("Precisa de mais alguma coisa?").
 
 ---
 
-## ✅ O que foi resolvido ANTERIORMENTE:
+## ⚠️ Atenção para a Próxima Sessão
 
-### 1. Erro de Cadastro de Novos Usuários - RESOLVIDO
-- **Problema**: `AuthApiError: Database error saving new user`
-- **Solução**: `handle_new_user()` com bypass RLS + código inline
-
-### 2. Termos de Uso (TermsModal) - RESOLVIDO
-- **Solução**: Adicionado `<TermsModal />` em `src/app/components/ClientLayout.tsx`
-
-### 3. Tutorial "Dança das Letras" - RESOLVIDO
-- **Solução**: Refatorado `useCommandCenterLogic.ts` com IDs fixos
-
----
-
-## � Estado do Git:
-
-- **Branch**: main
-- **Último commit**: 43f1cf3 (autor: joaoejrmcg@gmail.com) - DIFERENTE do push anterior!
-- **Git config local**: jaimerodriguesjunior@outlook.com (RESTAURADO)
-- **ATENÇÃO**: Precisará de `git push --force` para sincronizar com GitHub
-
----
-
-## 🧪 Variáveis de Ambiente Vercel:
-
-Confirmar que estão configuradas:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `ASAAS_API_KEY`
-- `ASAAS_WALLET_ID`
+1.  **Código Legado/Lixo:** Este projeto contém arquivos herdados de outro sistema. **MUITO CUIDADO** ao assumir que algo existe ou funciona. Sempre verifique o arquivo antes de usar.
+2.  **Leitura Obrigatória:**
+    -   Leia `RULES.md` para entender as diretrizes de governança (autorização explícita).
+    -   Leia `PROJECT_CONTEXT.md` para entender a arquitetura e tabelas oficiais.
+3.  **Foco Atual:** Testes do **Nível 1 (Carteira)**.
+4.  **Próximos Passos:**
+    -   Validar estabilidade do Nível 1.
+    -   Definir e implementar regras de transição para o Nível 2 (Organização).
+    -   **NÃO** implementar funcionalidades de níveis superiores (2, 3, 4) sem autorização explícita.

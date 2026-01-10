@@ -61,6 +61,23 @@ export async function getMovements(params?: GetMovementsParams): Promise<Movemen
     return data || [];
 }
 
+export async function getLastMovement(): Promise<Movement | null> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (error) return null;
+    return data;
+}
+
 export async function deleteMovement(id: string) {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
