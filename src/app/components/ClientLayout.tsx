@@ -1,5 +1,5 @@
 "use client";
-// Vercel Connection Test
+// Vercel Connection Verified ✅
 
 
 import { usePathname } from "next/navigation";
