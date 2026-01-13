@@ -3,6 +3,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { MovementType, LoanType } from '../types';
+import { incrementActionCount } from './profile';
 
 async function getSupabase() {
     const cookieStore = await cookies();
@@ -30,6 +31,10 @@ interface CreateMovementParams {
     cardId?: string;
     categoryId?: string;
 
+    // Scheduling
+    dueDate?: string;  // When the payment is due (for future payments)
+    isPaid?: boolean;  // Whether it's already paid (default: true for immediate, false for future)
+
     // Flags
     isLoan?: boolean;
     loanId?: string; // If linking to existing loan
@@ -51,6 +56,7 @@ export async function createMovement(params: CreateMovementParams) {
 
     const {
         description, amount, type, date, accountId, cardId, categoryId,
+        dueDate, isPaid,
         isLoan, loanId, loanDescription, loanTotal, loanType,
         isReserve, reserveId,
         isReimbursement
@@ -171,6 +177,9 @@ export async function createMovement(params: CreateMovementParams) {
         }
 
         // D. Create Movement Record
+        // Smart default: is_paid = true if no dueDate, otherwise false (pending payment)
+        const finalIsPaid = isPaid !== undefined ? isPaid : (dueDate ? false : true);
+
         const { data: movement, error: moveError } = await supabase
             .from('movements')
             .insert({
@@ -178,6 +187,8 @@ export async function createMovement(params: CreateMovementParams) {
                 description,
                 amount,
                 date,
+                due_date: dueDate || null,
+                is_paid: finalIsPaid,
                 type,
                 account_id: finalAccountId,
                 card_id: cardId,
@@ -192,6 +203,14 @@ export async function createMovement(params: CreateMovementParams) {
             .single();
 
         if (moveError) throw moveError;
+
+        // Increment action count for level progression
+        try {
+            await incrementActionCount();
+        } catch (e) {
+            console.error('Error incrementing action count:', e);
+            // Don't fail the movement creation if this fails
+        }
 
         return { success: true, data: movement };
 
@@ -240,4 +259,55 @@ export async function getFinancialStatus() {
         realExpense,
         balance: realIncome - realExpense // Net Result
     };
+}
+
+export async function deleteLastMovement(): Promise<{ success: boolean; error?: string; deletedDescription?: string }> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Não autorizado" };
+
+    // 1. Find the most recent movement
+    const { data: lastMovement, error: fetchError } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (fetchError || !lastMovement) {
+        return { success: false, error: "Nenhum lançamento encontrado para excluir." };
+    }
+
+    // 2. Revert account balance if applicable
+    if (lastMovement.account_id && lastMovement.is_paid) {
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('balance')
+            .eq('id', lastMovement.account_id)
+            .single();
+
+        if (account) {
+            let newBalance = account.balance;
+            // Reverse the effect
+            if (lastMovement.type === 'income') {
+                newBalance -= lastMovement.amount;
+            } else if (lastMovement.type === 'expense') {
+                newBalance += lastMovement.amount;
+            }
+            await supabase.from('accounts').update({ balance: newBalance }).eq('id', lastMovement.account_id);
+        }
+    }
+
+    // 3. Delete the movement
+    const { error: deleteError } = await supabase
+        .from('movements')
+        .delete()
+        .eq('id', lastMovement.id);
+
+    if (deleteError) {
+        return { success: false, error: deleteError.message };
+    }
+
+    return { success: true, deletedDescription: lastMovement.description };
 }

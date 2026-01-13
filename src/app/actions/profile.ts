@@ -225,7 +225,10 @@ export async function updateUserLevel(newLevel: UserLevel): Promise<{ success: b
 
     const { error } = await supabase
         .from('profiles')
-        .update({ user_level: newLevel })
+        .update({
+            user_level: newLevel,
+            level_actions_count: 0  // Reset counter when changing levels
+        })
         .eq('user_id', user.id);
 
     if (error) return { success: false, error: error.message };
@@ -251,4 +254,78 @@ export async function incrementLevel(): Promise<{ success: boolean; newLevel?: U
     }
 
     return result;
+}
+
+/**
+ * Retorna o contador de ações do nível atual
+ */
+export async function getActionCount(): Promise<number> {
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) { },
+                remove(name: string, options: CookieOptions) { },
+            },
+        }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('level_actions_count')
+        .eq('user_id', user.id)
+        .single();
+
+    return profile?.level_actions_count || 0;
+}
+
+/**
+ * Incrementa o contador de ações do nível
+ */
+export async function incrementActionCount(): Promise<number> {
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) { },
+                remove(name: string, options: CookieOptions) { },
+            },
+        }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // 1. Get current count
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('level_actions_count')
+        .eq('user_id', user.id)
+        .single();
+
+    const currentCount = profile?.level_actions_count || 0;
+    const newCount = currentCount + 1;
+
+    // 2. Update count
+    await supabase
+        .from('profiles')
+        .update({ level_actions_count: newCount })
+        .eq('user_id', user.id);
+
+    return newCount;
 }

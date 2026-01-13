@@ -172,7 +172,7 @@ export async function setWalletInitialBalance(balance: number): Promise<{ succes
     // Find the user's wallet
     const { data: wallet, error: findError } = await supabase
         .from('accounts')
-        .select('id')
+        .select('id, balance, initial_balance')
         .eq('user_id', user.id)
         .eq('type', 'wallet')
         .limit(1)
@@ -199,10 +199,18 @@ export async function setWalletInitialBalance(balance: number): Promise<{ succes
         return { success: true };
     }
 
-    // Update existing wallet - set BOTH balance and initial_balance
+    // Update existing wallet - set initial_balance and adjust current balance
+    const currentInitial = wallet.initial_balance || 0;
+    const currentBalance = wallet.balance || 0;
+    const diff = balance - currentInitial;
+    const newBalance = currentBalance + diff;
+
     const { error: updateError } = await supabase
         .from('accounts')
-        .update({ balance, initial_balance: balance })
+        .update({
+            balance: newBalance,
+            initial_balance: balance
+        })
         .eq('id', wallet.id);
 
     if (updateError) {
@@ -210,6 +218,38 @@ export async function setWalletInitialBalance(balance: number): Promise<{ succes
     }
 
     return { success: true };
+}
+
+// Get account by name (case-insensitive)
+export async function getAccountByName(name: string): Promise<Account | null> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .ilike('name', name)
+        .single();
+
+    return data;
+}
+
+// Get account balance by ID
+export async function getAccountBalance(accountId: string): Promise<number> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    const { data } = await supabase
+        .from('accounts')
+        .select('balance')
+        .eq('id', accountId)
+        .eq('user_id', user.id)
+        .single();
+
+    return data?.balance || 0;
 }
 
 // ============ CREDIT CARDS ============
@@ -295,4 +335,48 @@ export async function getDefaultCard() {
         .single();
 
     return data;
+}
+
+export async function recalculateBalances() {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false };
+
+    // 1. Get all accounts
+    const { data: accounts } = await supabase
+        .from('accounts')
+        .select('id, initial_balance, balance')
+        .eq('user_id', user.id);
+
+    if (!accounts) return { success: true };
+
+    for (const acc of accounts) {
+        // 2. Sum movements for this account
+        const { data: movements } = await supabase
+            .from('movements')
+            .select('amount, type')
+            .eq('account_id', acc.id)
+            .eq('is_paid', true);
+
+        let sum = 0;
+        movements?.forEach((m: any) => {
+            if (m.type === 'income') sum += Number(m.amount);
+            if (m.type === 'expense') sum -= Number(m.amount);
+        });
+
+        // 3. Calculate correct balance
+        const initial = Number(acc.initial_balance) || 0;
+        const correctBalance = initial + sum;
+
+        // 4. Update if different
+        if (Math.abs(correctBalance - (acc.balance || 0)) > 0.01) {
+            console.log(`Fixing balance for account ${acc.id}: ${acc.balance} -> ${correctBalance}`);
+            await supabase
+                .from('accounts')
+                .update({ balance: correctBalance })
+                .eq('id', acc.id);
+        }
+    }
+
+    return { success: true };
 }

@@ -1,6 +1,6 @@
 import { UserLevel } from "./levels";
 
-export type SuggestionContext = 'home' | 'financial' | 'reports';
+export type SuggestionContext = 'home' | 'financial' | 'reports' | 'calendar';
 
 const HOME_SUGGESTIONS: Record<number, string[]> = {
     0: [
@@ -43,7 +43,7 @@ const FINANCIAL_SUGGESTIONS: Record<number, string[]> = {
     1: [
         "Ontem gastei 40 de Uber",
         "Desfazer último lançamento",
-        "Gastei 30 na padaria",
+        "Dica: diga 'cancela' se errar",
         "Recebi 50 de reembolso",
     ],
     2: [
@@ -94,10 +94,40 @@ const REPORTS_SUGGESTIONS: Record<number, string[]> = {
     ],
 };
 
+const CALENDAR_SUGGESTIONS: Record<number, string[]> = {
+    0: [
+        "O que vence hoje?",
+        "Tenho contas essa semana?",
+        "Resumo do dia",
+    ],
+    1: [
+        "Quanto vou gastar esse mês?",
+        "Tenho algo pra receber?",
+        "Próximas contas a pagar",
+    ],
+    2: [
+        "Minha conta de água vence dia 10",
+        "Lembrar de pagar aluguel dia 5",
+        "Recebo salário dia 30",
+        "Agendar pagamento pra dia 20",
+    ],
+    3: [
+        "Previsão de saldo pro dia 30",
+        "Simular gasto no dia 15",
+        "Vencimento do cartão",
+    ],
+    4: [
+        "Projeção de fluxo de caixa",
+        "Melhor dia para compras",
+        "Planejamento mensal",
+    ],
+};
+
 export function getSuggestionsForLevel(level: UserLevel, count: number = 4, context: SuggestionContext = 'home'): string[] {
     let source = HOME_SUGGESTIONS;
     if (context === 'financial') source = FINANCIAL_SUGGESTIONS;
     if (context === 'reports') source = REPORTS_SUGGESTIONS;
+    if (context === 'calendar') source = CALENDAR_SUGGESTIONS;
 
     // Se nível 0, retorna fixo
     if (level === 0) return source[0];

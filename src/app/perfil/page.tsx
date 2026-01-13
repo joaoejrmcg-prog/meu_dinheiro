@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, Zap, LogOut, CreditCard, Gift } from 'lucide-react
 import { getUserProfile, getSubscriptionDetails } from '../actions/profile';
 import { getPlanDisplayName } from '../utils/plans';
 import SubscriptionManager from '../components/SubscriptionManager';
+import BiometricSettings from '../components/BiometricSettings';
 
 export default async function PerfilPage() {
     const cookieStore = await cookies();
@@ -94,6 +95,9 @@ export default async function PerfilPage() {
                         <span className="font-semibold">Indicar Amigos</span>
                     </Link>
                 </div>
+
+                {/* Biometria */}
+                <BiometricSettings />
 
                 {/* Informações do Usuário */}
                 <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-6 mb-4">

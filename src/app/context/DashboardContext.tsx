@@ -15,6 +15,8 @@ interface DashboardContextType {
     metrics: DashboardMetrics;
     loading: boolean;
     refreshData: () => Promise<void>;
+    tutorialAction: string | null;
+    triggerTutorial: (action: string) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -27,6 +29,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         balanceMonth: 0,
         totalAssets: 0
     });
+    const [tutorialAction, setTutorialAction] = useState<string | null>(null);
+
+    const triggerTutorial = (action: string) => {
+        setTutorialAction(action);
+        // Reset after a short delay to allow re-triggering
+        setTimeout(() => setTutorialAction(null), 100);
+    };
 
     const refreshData = async () => {
         try {
@@ -63,7 +72,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         <DashboardContext.Provider value={{
             metrics,
             loading,
-            refreshData
+            refreshData,
+            tutorialAction,
+            triggerTutorial
         }}>
             {children}
         </DashboardContext.Provider>

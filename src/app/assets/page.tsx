@@ -8,14 +8,23 @@ import { createTransfer } from "../actions/financial";
 import { Account, CreditCard as CreditCardType } from "../types";
 import { cn } from "../lib/utils";
 
+import { getAccountStatement } from "../actions/financial";
+import { Movement } from "../types";
+
 type Tab = 'accounts' | 'cards';
+
+import { getUserLevel } from "../actions/profile";
+import { UserLevel } from "../lib/levels";
+import { Lock } from "lucide-react";
+
+// ... (imports remain the same)
 
 export default function AssetsPage() {
     const [activeTab, setActiveTab] = useState<Tab>('accounts');
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [cards, setCards] = useState<CreditCardType[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showModal, setShowModal] = useState(false);
+    const [userLevel, setUserLevel] = useState<UserLevel>(0);
 
     useEffect(() => {
         loadData();
@@ -23,12 +32,14 @@ export default function AssetsPage() {
 
     const loadData = async () => {
         setLoading(true);
-        const [accountsData, cardsData] = await Promise.all([
+        const [accountsData, cardsData, level] = await Promise.all([
             getAccounts(),
-            getCreditCards()
+            getCreditCards(),
+            getUserLevel()
         ]);
         setAccounts(accountsData);
         setCards(cardsData);
+        setUserLevel(level);
         setLoading(false);
     };
 
@@ -52,9 +63,40 @@ export default function AssetsPage() {
 
     const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
 
+    const isCardsLocked = userLevel < 3;
+
+    const getLevelTips = (level: number) => {
+        if (level < 2) {
+            return [
+                { text: '"Cadastrar conta do Nubank"', link: '/?tip=contas' },
+                { text: '"Adicionar saldo na Carteira"', link: '/?tip=saldo' },
+                { text: '"Registrar gasto com almoço"', link: '/?tip=gastos' },
+                { text: '"Quanto gastei hoje?"', link: '/?tip=resumo' }
+            ];
+        } else if (level < 3) {
+            return [
+                { text: '"Transferir 500 para Poupança"', link: '/?tip=transferencia' },
+                { text: '"Agendar pagamento de luz"', link: '/?tip=agendamento' },
+                { text: '"Criar conta de Investimento"', link: '/?tip=investimento' },
+                { text: '"Resumo da semana"', link: '/?tip=resumo' }
+            ];
+        } else {
+            return [
+                { text: '"Cadastrar cartão Nubank com limite de 5000"', link: '/?tip=cartao' },
+                { text: '"Registrar compra no crédito"', link: '/?tip=compra_credito' },
+                { text: '"Ver fatura do cartão"', link: '/?tip=fatura' },
+                { text: '"Qual o melhor dia de compra?"', link: '/?tip=melhor_dia' }
+            ];
+        }
+    };
+
+    const tips = getLevelTips(userLevel);
+
     return (
         <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-            {/* Header */}
+            {/* Header and AI Quick Actions remain the same */}
+
+            {/* ... (Header code) ... */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-[var(--foreground)]">Patrimônio</h1>
@@ -81,22 +123,12 @@ export default function AssetsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <Link href="/?tip=carteiras" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Cadastrar cartão Nubank com limite de 5000"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
-                    <Link href="/?tip=carteiras" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Abri uma conta no Itaú"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
-                    <Link href="/?tip=carteiras" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Adicionar vale refeição com saldo de 500"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
-                    <Link href="/?tip=carteiras" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Novo cartão XP fecha dia 10 vence dia 17"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
+                    {tips.map((tip, index) => (
+                        <Link key={index} href={tip.link} className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
+                            <span className="text-xs text-neutral-400 group-hover:text-green-400">{tip.text}</span>
+                            <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
+                        </Link>
+                    ))}
                 </div>
             </div>
 
@@ -115,16 +147,23 @@ export default function AssetsPage() {
                     Contas
                 </button>
                 <button
-                    onClick={() => setActiveTab('cards')}
+                    onClick={() => !isCardsLocked && setActiveTab('cards')}
+                    disabled={isCardsLocked}
                     className={cn(
-                        "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium transition-all",
+                        "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium transition-all relative overflow-hidden",
                         activeTab === 'cards'
                             ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                            : "text-neutral-400 hover:text-neutral-200"
+                            : isCardsLocked
+                                ? "text-neutral-600 cursor-not-allowed opacity-50"
+                                : "text-neutral-400 hover:text-neutral-200"
                     )}
+                    title={isCardsLocked ? "Disponível no Nível 3 (Crédito)" : "Gerenciar Cartões"}
                 >
-                    <CreditCard className="w-4 h-4" />
+                    {isCardsLocked ? <Lock className="w-4 h-4" /> : <CreditCard className="w-4 h-4" />}
                     Cartões
+                    {isCardsLocked && (
+                        <div className="absolute inset-0 bg-neutral-950/10" />
+                    )}
                 </button>
             </div>
 
@@ -158,6 +197,12 @@ function AccountsTab({ accounts, onRefresh, getAccountIcon, getAccountTypeLabel 
     const [transferData, setTransferData] = useState({ fromId: '', toId: '', amount: '', description: '' });
     const [transferring, setTransferring] = useState(false);
     const [transferError, setTransferError] = useState('');
+
+    // Statement Modal State
+    const [showStatementModal, setShowStatementModal] = useState(false);
+    const [statementData, setStatementData] = useState<any>(null);
+    const [loadingStatement, setLoadingStatement] = useState(false);
+    const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
 
     const handleCreate = async () => {
         if (!formData.name) return;
@@ -209,6 +254,19 @@ function AccountsTab({ accounts, onRefresh, getAccountIcon, getAccountTypeLabel 
             setTransferError(result.error || 'Erro ao transferir');
         }
         setTransferring(false);
+    };
+
+    const handleOpenStatement = async (account: Account) => {
+        setSelectedAccount(account);
+        setShowStatementModal(true);
+        setLoadingStatement(true);
+        try {
+            const data = await getAccountStatement(account.id);
+            setStatementData(data);
+        } catch (e) {
+            console.error(e);
+        }
+        setLoadingStatement(false);
     };
 
     const rotaryAccounts = accounts.filter(a => a.type !== 'savings');
@@ -284,6 +342,7 @@ function AccountsTab({ accounts, onRefresh, getAccountIcon, getAccountTypeLabel 
                                 onTransfer={openTransferModal}
                                 getIcon={getAccountIcon}
                                 getLabel={getAccountTypeLabel}
+                                onClick={handleOpenStatement}
                             />
                         ))}
                     </div>
@@ -309,6 +368,7 @@ function AccountsTab({ accounts, onRefresh, getAccountIcon, getAccountTypeLabel 
                                 getIcon={getAccountIcon}
                                 getLabel={getAccountTypeLabel}
                                 isInvestment
+                                onClick={handleOpenStatement}
                             />
                         ))}
                     </div>
@@ -407,16 +467,100 @@ function AccountsTab({ accounts, onRefresh, getAccountIcon, getAccountTypeLabel 
                     </div>
                 </div>
             )}
+
+            {/* Statement Modal */}
+            {showStatementModal && selectedAccount && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-full max-w-lg space-y-4 max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between flex-shrink-0">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                {getAccountIcon(selectedAccount.type)}
+                                Extrato: {selectedAccount.name}
+                            </h3>
+                            <button onClick={() => setShowStatementModal(false)} className="text-neutral-500 hover:text-white">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {loadingStatement ? (
+                            <div className="flex-1 flex items-center justify-center py-12">
+                                <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        ) : statementData ? (
+                            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                                {/* Summary Cards */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50">
+                                        <p className="text-xs text-neutral-400">Saldo Anterior</p>
+                                        <p className="font-medium text-white">
+                                            R$ {statementData.previousBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                    <div className="bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50">
+                                        <p className="text-xs text-neutral-400">Saldo Atual</p>
+                                        <p className={cn("font-medium", statementData.currentBalance >= 0 ? "text-green-400" : "text-red-400")}>
+                                            R$ {statementData.currentBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-green-500/10 p-3 rounded-lg border border-green-500/20">
+                                        <p className="text-xs text-green-400/70">Entradas (Mês)</p>
+                                        <p className="font-medium text-green-400">
+                                            + R$ {statementData.totalEntries.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                    <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                                        <p className="text-xs text-red-400/70">Saídas (Mês)</p>
+                                        <p className="font-medium text-red-400">
+                                            - R$ {statementData.totalExits.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Transactions List */}
+                                <div>
+                                    <h4 className="text-sm font-medium text-neutral-400 mb-2">Movimentações do Mês</h4>
+                                    <div className="space-y-2">
+                                        {[...statementData.entries, ...statementData.exits]
+                                            .sort((a: Movement, b: Movement) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                            .map((mov: Movement) => (
+                                                <div key={mov.id} className="flex items-center justify-between p-3 bg-neutral-800/30 rounded-lg border border-neutral-800">
+                                                    <div>
+                                                        <p className="text-sm text-white font-medium">{mov.description}</p>
+                                                        <p className="text-xs text-neutral-500">{new Date(mov.date).toLocaleDateString('pt-BR')}</p>
+                                                    </div>
+                                                    <span className={cn("text-sm font-medium", mov.type === 'income' ? "text-green-400" : "text-red-400")}>
+                                                        {mov.type === 'income' ? '+' : '-'} R$ {mov.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        {statementData.entries.length === 0 && statementData.exits.length === 0 && (
+                                            <p className="text-center text-neutral-500 text-sm py-4">Nenhuma movimentação este mês.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center text-red-400">Erro ao carregar extrato.</div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
-function AccountCard({ acc, onDelete, onTransfer, getIcon, getLabel, isInvestment }: any) {
+function AccountCard({ acc, onDelete, onTransfer, getIcon, getLabel, isInvestment, onClick }: any) {
     return (
-        <div className={cn(
-            "border rounded-xl p-4 flex items-center gap-4",
-            isInvestment ? "bg-blue-500/5 border-blue-500/10" : "bg-neutral-900 border-neutral-800"
-        )}>
+        <div
+            onClick={() => onClick(acc)}
+            className={cn(
+                "border rounded-xl p-4 flex items-center gap-4 cursor-pointer transition-all hover:border-neutral-600",
+                isInvestment ? "bg-blue-500/5 border-blue-500/10" : "bg-neutral-900 border-neutral-800"
+            )}
+        >
             <div className={cn(
                 "w-10 h-10 rounded-full flex items-center justify-center",
                 isInvestment ? "bg-blue-500/10 text-blue-400" : "bg-green-500/10 text-green-400"
@@ -424,7 +568,10 @@ function AccountCard({ acc, onDelete, onTransfer, getIcon, getLabel, isInvestmen
                 {getIcon(acc.type)}
             </div>
             <div className="flex-1">
-                <p className="font-medium text-white">{acc.name}</p>
+                <p className="font-medium text-white flex items-center gap-2">
+                    {acc.name}
+                    {acc.is_default && <span className="text-[10px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded-full">(Principal)</span>}
+                </p>
                 <p className="text-xs text-neutral-500">{getLabel(acc.type)}</p>
             </div>
             <div className="text-right">
@@ -433,14 +580,14 @@ function AccountCard({ acc, onDelete, onTransfer, getIcon, getLabel, isInvestmen
                 </p>
             </div>
             <button
-                onClick={() => onTransfer(acc.id)}
+                onClick={(e) => { e.stopPropagation(); onTransfer(acc.id); }}
                 className="p-2 text-neutral-500 hover:text-green-400 transition-colors"
                 title="Transferir"
             >
                 <ArrowLeftRight className="w-4 h-4" />
             </button>
             <button
-                onClick={() => onDelete(acc.id)}
+                onClick={(e) => { e.stopPropagation(); onDelete(acc.id); }}
                 className="p-2 text-neutral-500 hover:text-red-400 transition-colors"
                 title="Excluir"
             >
@@ -449,6 +596,8 @@ function AccountCard({ acc, onDelete, onTransfer, getIcon, getLabel, isInvestmen
         </div>
     );
 }
+
+
 
 // ============ CARDS TAB ============
 function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: () => void }) {

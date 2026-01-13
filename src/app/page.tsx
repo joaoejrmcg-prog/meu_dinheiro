@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import CommandCenter from "./components/CommandCenter";
+import Confetti from "./components/Confetti";
 import { Sparkles, RotateCcw } from "lucide-react";
-import { DashboardProvider } from "./context/DashboardContext";
+import { DashboardProvider, useDashboard } from "./context/DashboardContext";
 import SubscriptionStatus from "./components/SubscriptionStatus";
-import { getUserLevel } from "./actions/profile";
+import { getUserLevel, getActionCount, incrementLevel } from "./actions/profile";
 import type { UserLevel } from "./lib/levels";
 import { getSuggestionsForLevel } from "./lib/suggestions";
 
@@ -13,13 +14,33 @@ import { getSuggestionsForLevel } from "./lib/suggestions";
 
 function HomeContent() {
   const [userLevel, setUserLevel] = useState<UserLevel>(0);
+  const [actionCount, setActionCount] = useState(0);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     getUserLevel().then((level) => {
       setUserLevel(level);
       setSuggestions(getSuggestionsForLevel(level, 3)); // Home usa 3 sugestões
     });
+
+    getActionCount().then(setActionCount);
+
+    const handleTransactionUpdate = () => {
+      getActionCount().then(setActionCount);
+    };
+
+    const handleCelebrate = () => {
+      setShowConfetti(true);
+    };
+
+    window.addEventListener('transactionUpdated', handleTransactionUpdate);
+    window.addEventListener('celebrateLevelUp', handleCelebrate);
+
+    return () => {
+      window.removeEventListener('transactionUpdated', handleTransactionUpdate);
+      window.removeEventListener('celebrateLevelUp', handleCelebrate);
+    };
   }, []);
 
   const handleSuggestionClick = (text: string) => {
@@ -37,11 +58,20 @@ function HomeContent() {
   };
 
   const handleRedoTutorial = () => {
-    handleSuggestionClick("Quero refazer o tutorial");
+    handleSuggestionClick(`Refazer tutorial nível ${userLevel}`);
+  };
+
+  const { triggerTutorial } = useDashboard();
+
+  const handleLevelUp = async () => {
+    const nextLevel = userLevel + 1;
+    console.log(`Botão Nível ${nextLevel} clicado, disparando ação via Context...`);
+    triggerTutorial(`START_L${nextLevel}`);
   };
 
   return (
     <div className="h-[calc(100vh-6rem)] flex flex-col items-center justify-center max-w-4xl mx-auto w-full md:p-4">
+      <Confetti trigger={showConfetti} onComplete={() => setShowConfetti(false)} />
       <div className="w-full flex-1 flex flex-col relative overflow-hidden">
 
         <div className="relative z-10 flex flex-col h-full">
@@ -98,15 +128,26 @@ function HomeContent() {
                     {sug}
                   </button>
                 ))}
-                {/* Botão Refazer Tutorial */}
-                <button
-                  onClick={handleRedoTutorial}
-                  className="text-xs px-3 py-2 rounded-lg bg-emerald-900/30 border border-emerald-700/50 text-emerald-400 hover:bg-emerald-800/40 hover:text-emerald-300 transition-colors flex items-center justify-center gap-1.5"
-                  title="Refazer tutorial"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  Refazer tutorial
-                </button>
+                {/* Botão Refazer Tutorial ou Ir para Nível X+1 */}
+                {actionCount >= 2 && userLevel < 4 ? (
+                  <button
+                    onClick={handleLevelUp}
+                    className="text-xs px-3 py-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 hover:text-amber-200 transition-all flex items-center justify-center gap-1.5 animate-in fade-in duration-500"
+                    title="Novos desafios disponíveis!"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Ir para Nível {userLevel + 1}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleRedoTutorial}
+                    className="text-xs px-3 py-2 rounded-lg bg-emerald-900/30 border border-emerald-700/50 text-emerald-400 hover:bg-emerald-800/40 hover:text-emerald-300 transition-colors flex items-center justify-center gap-1.5"
+                    title="Refazer tutorial"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Refazer tutorial nível {userLevel}
+                  </button>
+                )}
               </div>
             )}
           </div>

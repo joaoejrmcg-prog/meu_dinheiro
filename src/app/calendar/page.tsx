@@ -6,6 +6,8 @@ import Link from "next/link";
 import { getCalendarMovements, CalendarDay } from "../actions/financial";
 import { Movement } from "../types";
 import { cn } from "../lib/utils";
+import { getUserLevel } from "../actions/profile";
+import { getSuggestionsForLevel } from "../lib/suggestions";
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -17,9 +19,15 @@ export default function CalendarPage() {
     const [calendarData, setCalendarData] = useState<CalendarDay[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [userLevel, setUserLevelState] = useState(0);
 
     useEffect(() => {
         loadData();
+        getUserLevel().then(level => {
+            setUserLevelState(level);
+            setSuggestions(getSuggestionsForLevel(level, 4, 'calendar'));
+        });
     }, [month, year]);
 
     const loadData = async () => {
@@ -115,22 +123,12 @@ export default function CalendarPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <Link href="/?tip=calendario" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Minha conta de água vence todo dia 10"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
-                    <Link href="/?tip=calendario" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Dou 40,00 de donativos todo dia 15"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
-                    <Link href="/?tip=calendario" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Lembrar de pagar aluguel dia 5"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
-                    <Link href="/?tip=calendario" className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
-                        <span className="text-xs text-neutral-400 group-hover:text-green-400">"Recebo meu salário dia 30"</span>
-                        <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
-                    </Link>
+                    {suggestions.map((sug, i) => (
+                        <Link key={i} href={`/?tip=${encodeURIComponent(sug)}`} className="flex items-center gap-2 p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/20 transition-all group">
+                            <span className="text-xs text-neutral-400 group-hover:text-green-400">"{sug}"</span>
+                            <ArrowRight className="w-3 h-3 text-neutral-600 group-hover:text-green-400 ml-auto" />
+                        </Link>
+                    ))}
                 </div>
             </div>
             {/* Legend */}

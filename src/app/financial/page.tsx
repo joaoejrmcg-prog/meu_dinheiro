@@ -517,6 +517,11 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
                                 <p className="font-medium text-white">{mov.description}</p>
                                 <p className="text-xs text-neutral-500">
                                     {new Date(mov.date).toLocaleDateString('pt-BR')}
+                                    {!mov.is_paid && mov.due_date && (
+                                        <span className="ml-2 text-orange-400">
+                                            📅 vence {new Date(mov.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                        </span>
+                                    )}
                                     {!mov.is_paid && <span className="ml-2 px-1.5 py-0.5 bg-orange-500/20 text-orange-400 rounded text-[10px]">Pendente</span>}
                                     {mov.is_loan && <span className="ml-2 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded text-[10px]">Empréstimo</span>}
                                     {mov.is_reserve && <span className="ml-2 px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">Reserva</span>}

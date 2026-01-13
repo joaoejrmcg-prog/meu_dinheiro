@@ -61,6 +61,7 @@ export interface Movement {
     description: string;
     amount: number;
     date: string;
+    due_date?: string; // Payment due date (for pending payments)
     type: MovementType;
 
     account_id?: string;
@@ -105,6 +106,9 @@ export type IntentType =
     | 'SIMULATE_SCENARIO'
     | 'BLOCKED_FEATURE'
     | 'CONFIRMATION_REQUIRED'
+    | 'RECONCILE_PAYMENT'
+    | 'TRANSFER_CONFIRM_NEGATIVE'
+    | 'DELETE_LAST_MOVEMENT'
     | 'NAVIGATE'
     | 'UNKNOWN';
 

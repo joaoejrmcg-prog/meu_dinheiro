@@ -129,7 +129,8 @@ function LoginForm() {
 
                 // After successful login, offer biometric setup if supported and not enrolled
                 if (isSupported) {
-                    if (!isEnrolled) {
+                    const biometricDeclined = localStorage.getItem('biometric_declined') === 'true';
+                    if (!isEnrolled && !biometricDeclined) {
                         setShowBiometricSetup(true);
                         // Don't redirect yet, wait for user decision
                     } else {
@@ -206,6 +207,7 @@ function LoginForm() {
     };
 
     const handleSkipBiometric = () => {
+        localStorage.setItem('biometric_declined', 'true');
         setShowBiometricSetup(false);
         router.refresh();
         router.push("/");

@@ -6,7 +6,9 @@ import { cn } from "@/app/lib/utils";
 import { VoiceOrb } from "./VoiceOrb";
 import { useCommandCenterLogic } from "../hooks/useCommandCenterLogic";
 import { TypewriterText } from "./TypewriterText";
+import { TutorialMessage } from "./TutorialMessage";
 import { getSubscriptionDetails } from "../actions/profile";
+import { formatMarkdown } from "../lib/markdown";
 
 export default function CommandCenter() {
     const {
@@ -24,8 +26,10 @@ export default function CommandCenter() {
         handleSubmit,
         setInputType,
         markTypingComplete,
+        markTutorialTypingComplete,
         quickActions,
-        handleQuickAction
+        handleQuickAction,
+        handleTutorialButton
     } = useCommandCenterLogic();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -86,11 +90,13 @@ export default function CommandCenter() {
                     <span className="px-2 py-0.5 rounded-full bg-neutral-800 border border-neutral-700 text-[10px] font-medium text-neutral-300 uppercase tracking-wider">
                         {userPlan || 'FREE'}
                     </span>
-                    {subscription?.currentPeriodEnd && (
+                    {subscription?.isLifetime ? (
+                        <p className="text-[10px] text-neutral-500">Vitalício ✨</p>
+                    ) : subscription?.currentPeriodEnd ? (
                         <p className="text-[10px] text-neutral-500">
                             Vence em {new Date(subscription.currentPeriodEnd).toLocaleDateString('pt-BR')}
                         </p>
-                    )}
+                    ) : null}
                 </div>
             </div>
 
@@ -146,8 +152,18 @@ export default function CommandCenter() {
                                     onComplete={() => markTypingComplete(msg.id)}
                                     onType={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}
                                 />
+                            ) : msg.buttons && msg.buttons.length > 0 ? (
+                                <TutorialMessage
+                                    content={msg.content}
+                                    buttons={msg.buttons}
+                                    onButtonClick={handleTutorialButton}
+                                    disabled={isProcessing}
+                                    typingComplete={msg.typingComplete}
+                                    onTypingComplete={() => markTutorialTypingComplete(msg.id)}
+                                    onType={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}
+                                />
                             ) : (
-                                <span className="whitespace-pre-wrap">{msg.content}</span>
+                                formatMarkdown(msg.content)
                             )}
                         </div>
                     </div>
