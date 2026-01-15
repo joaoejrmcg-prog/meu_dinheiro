@@ -1,33 +1,98 @@
 # Contexto da Sessão
 
-## 📌 Últimas Alterações (Sessão Atual)
+> **Última Atualização:** 14/01/2026 às 14:46
 
-### 1. Correções Críticas
-- **Bug `account_id` NULL:** Corrigido. Se não houver conta padrão, o sistema agora cria/busca automaticamente uma conta "Carteira" (`getOrCreateWallet`) para garantir que nenhum movimento fique órfão.
-- **Trial de 7 Dias:** Confirmado que a regra está no banco de dados (`handle_new_user_subscription`).
+---
 
-### 2. Melhorias de UX (IA & Chat)
-- **Comando "Cancela":** Intercepta palavras como "cancela", "esquece", "me enganei". Não apaga o histórico, apenas confirma o cancelamento e para o processamento.
-- **Comando "Desfazer":** Intercepta "apagar último", "desfazer". Busca o último movimento do usuário e o deleta, confirmando a ação.
-- **UI da IA:**
-  - Fundo menos escuro (`#1a1a1a`) para melhor leitura.
-  - Mensagens do usuário em azul sólido para diferenciar da IA.
-  - Indicador "🎤 Ouvindo..." visível acima do input quando o microfone está ativo.
-  - **Cabeçalho:** Agora mostra Status/Créditos na esquerda e Plano/Vencimento na direita.
+## 📌 Sessão de 14/01/2026 - Correção de Fluxo de Caixa
 
-### 3. Comportamento da IA
-- **Prompt Ajustado:** A IA agora age como um assistente que "anota" (ex: "✅ Anotado: Gastei R$ 50..."), sem repetir o que o usuário disse e sem fazer perguntas de follow-up desnecessárias ("Precisa de mais alguma coisa?").
+### 1. Movimentos Pendentes - Lógica Corrigida
+
+**Problema:** Movimentos com `is_paid = false` estavam vinculando conta e afetando saldo.
+
+**Correção:**
+- `createMovement` não vincula `account_id` para pendentes
+- `createMovement` não atualiza saldo para pendentes
+- IA não menciona conta na resposta para pendentes
+
+**Arquivos:** `finance-core.ts`, `ai.ts`
+
+---
+
+### 2. Consistência Entre Páginas
+
+**Problema:** Página Financeiro e Relatórios incluíam pendentes, Dashboard não.
+
+**Correção:**
+- `financial/page.tsx`: `getMonthSummary(month, year, 'paid')`
+- `reports.ts`: filtro `is_paid !== false` nos cálculos
+
+---
+
+### 3. Gráfico de Fluxo de Caixa - Múltiplos Bugs
+
+**Problema Principal:** Saldo -8.145,60 vs real 4.254,40
+
+**Bugs encontrados:**
+1. **Transferências contadas como despesas** - `else` capturava `type='transfer'`
+2. **Saldo inicial errado** - calculava desde dia 1, mas usuário existe desde dia 13
+3. **Dados de todos usuários** - SQL debug sem filtro de user_id
+4. **Linha duplicada no tooltip** - 6 linhas em vez de 3
+
+**Correções:**
+- Mudança de `else` para `else if (m.type === 'expense')`
+- Filtro de `is_loan`, `is_reserve`, `is_reimbursement`
+- Seleção de campos extras na query
+- Legenda limpa com `legendType="none"` para linhas pontilhadas
+
+**Arquivo:** `actions/financial.ts` - função `getCashFlowChartData`
+
+---
+
+### 4. Página de Assets - Cache
+
+**Problema:** Saldo desatualizado ao abrir a página.
+
+**Correção:** Chamada `recalculateBalances()` no `loadData`.
+
+**Arquivo:** `assets/page.tsx`
+
+---
+
+### 5. Festa de Nível - Repetição
+
+**Problema:** Mensagem de parabéns aparecia múltiplas vezes.
+
+**Correção:** Contador trava em 10 até subir de nível.
+
+**Arquivo:** `profile.ts`
+
+---
+
+## 📊 Dados Confirmados via SQL
+
+```
+Seu usuário em Janeiro/2026:
+- Despesas: R$ 4.245,60 (28 movimentos)
+- Receitas: R$ 5.200,00 (4 movimentos)
+- Transferências: R$ 12.400,00 (6 movimentos) - não afeta balanço
+
+Contas:
+- Itaú: R$ 50,00
+- Carteira: R$ 4.204,40
+- Total: R$ 4.254,40
+```
 
 ---
 
 ## ⚠️ Atenção para a Próxima Sessão
 
-1.  **Código Legado/Lixo:** Este projeto contém arquivos herdados de outro sistema. **MUITO CUIDADO** ao assumir que algo existe ou funciona. Sempre verifique o arquivo antes de usar.
-2.  **Leitura Obrigatória:**
-    -   Leia `RULES.md` para entender as diretrizes de governança (autorização explícita).
-    -   Leia `PROJECT_CONTEXT.md` para entender a arquitetura e tabelas oficiais.
-3.  **Foco Atual:** Testes do **Nível 1 (Carteira)**.
-4.  **Próximos Passos:**
-    -   Validar estabilidade do Nível 1.
-    -   Definir e implementar regras de transição para o Nível 2 (Organização).
-    -   **NÃO** implementar funcionalidades de níveis superiores (2, 3, 4) sem autorização explícita.
+1. **Remover console.log de debug** em `getCashFlowChartData`
+
+2. **Testar gráfico** após as correções (Ctrl+Shift+R)
+
+3. **Pendente:** Definir como lidar com contas atrasadas no gráfico
+
+4. **Leitura Obrigatória:**
+   - `RULES.md` - Diretrizes de governança
+   - `PROJECT_CONTEXT.md` - Arquitetura e tabelas

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { BarChart3, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, PiggyBank, Wallet, CreditCard, Sparkles, ArrowRight, Printer, X } from "lucide-react";
-import { getMonthReport, getCardInvoicePreviews, InvoicePreview } from "../actions/reports";
+import { BarChart3, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, PiggyBank, Wallet, CreditCard, Sparkles, ArrowRight, Printer, X, Clock, CircleDollarSign } from "lucide-react";
+import { getMonthReport, getCardInvoicePreviews, InvoicePreview, getPendingExpenses, getPendingIncomes, PendingSummary } from "../actions/reports";
 import { getUserLevel } from "../actions/profile";
 import { getSuggestionsForLevel } from "../lib/suggestions";
 import { cn } from "../lib/utils";
@@ -31,10 +31,13 @@ interface Report {
 export default function ReportsPage() {
     const [report, setReport] = useState<Report | null>(null);
     const [invoices, setInvoices] = useState<InvoicePreview[]>([]);
+    const [pendingExpenses, setPendingExpenses] = useState<PendingSummary>({ total: 0, count: 0, movements: [] });
+    const [pendingIncomes, setPendingIncomes] = useState<PendingSummary>({ total: 0, count: 0, movements: [] });
     const [loading, setLoading] = useState(true);
     const [userLevel, setUserLevel] = useState(0);
     const [suggestions, setSuggestions] = useState<string[]>([]);
-    const [activeModal, setActiveModal] = useState<'real' | 'cash' | null>(null);
+    const [activeModal, setActiveModal] = useState<'real' | 'cash' | 'payables' | 'receivables' | null>(null);
+    const [printMode, setPrintMode] = useState<'financial' | 'pending' | null>(null);
 
     const now = new Date();
     const [month, setMonth] = useState(now.getMonth() + 1);
@@ -50,12 +53,16 @@ export default function ReportsPage() {
 
     const loadData = async () => {
         setLoading(true);
-        const [reportData, invoicesData] = await Promise.all([
+        const [reportData, invoicesData, expensesData, incomesData] = await Promise.all([
             getMonthReport(month, year),
-            getCardInvoicePreviews(month, year)
+            getCardInvoicePreviews(month, year),
+            getPendingExpenses(month, year),
+            getPendingIncomes(month, year)
         ]);
         setReport(reportData);
         setInvoices(invoicesData);
+        setPendingExpenses(expensesData);
+        setPendingIncomes(incomesData);
         setLoading(false);
     };
 
@@ -77,6 +84,14 @@ export default function ReportsPage() {
         window.print();
     };
 
+    const handlePrintSection = (mode: 'financial' | 'pending') => {
+        setPrintMode(mode);
+        setTimeout(() => {
+            window.print();
+            setPrintMode(null);
+        }, 100);
+    };
+
     return (
 
         <>
@@ -92,14 +107,6 @@ export default function ReportsPage() {
                             <p className="text-neutral-500 text-sm">A verdade dos números</p>
                         </div>
                     </div>
-
-                    <button
-                        onClick={handlePrint}
-                        className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-300 transition-colors print:hidden"
-                    >
-                        <Printer className="w-4 h-4" />
-                        <span className="text-sm font-medium">Imprimir</span>
-                    </button>
 
                     {/* AI Suggestions */}
                     <div className="hidden md:block bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-xl p-3 print:hidden min-w-[300px]">
@@ -136,6 +143,18 @@ export default function ReportsPage() {
                     </div>
                 ) : report && (
                     <>
+                        {/* Section Header: Resultado Financeiro */}
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-semibold text-neutral-200">Resultado Financeiro</h2>
+                            <button
+                                onClick={() => handlePrintSection('financial')}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-400 hover:text-neutral-200 transition-colors text-sm"
+                            >
+                                <Printer className="w-4 h-4" />
+                                <span>Imprimir</span>
+                            </button>
+                        </div>
+
                         {/* Main Cards - Real vs Cash Flow */}
                         <div className="grid md:grid-cols-2 gap-4">
                             {/* Real Balance - The Truth (Visible for everyone now) */}
@@ -200,6 +219,55 @@ export default function ReportsPage() {
                                         <span className={cn("font-bold text-xl", report.currentBalance >= 0 ? "text-blue-400" : "text-orange-400")}>
                                             {formatCurrency(report.currentBalance)}
                                         </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section Header: Contas Pendentes */}
+                        <div className="flex items-center justify-between mt-4">
+                            <h2 className="text-lg font-semibold text-neutral-200">Contas Pendentes</h2>
+                            <button
+                                onClick={() => handlePrintSection('pending')}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-400 hover:text-neutral-200 transition-colors text-sm"
+                            >
+                                <Printer className="w-4 h-4" />
+                                <span>Imprimir</span>
+                            </button>
+                        </div>
+
+                        {/* Pending Cards - Contas a Pagar/Receber */}
+                        <div className="grid md:grid-cols-2 gap-4">
+                            {/* Contas a Pagar */}
+                            <div
+                                onClick={() => setActiveModal('payables')}
+                                className="bg-gradient-to-br from-orange-500/10 to-red-500/5 border border-orange-500/20 rounded-2xl p-5 cursor-pointer hover:border-orange-500/40 transition-all"
+                            >
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Clock className="w-5 h-5 text-orange-400" />
+                                    <h3 className="font-semibold text-orange-400">Contas a Pagar</h3>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-neutral-400 text-sm">{pendingExpenses.count} pendente{pendingExpenses.count !== 1 ? 's' : ''}</span>
+                                        <span className="font-bold text-lg text-orange-400">{formatCurrency(pendingExpenses.total)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Contas a Receber */}
+                            <div
+                                onClick={() => setActiveModal('receivables')}
+                                className="bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border border-emerald-500/20 rounded-2xl p-5 cursor-pointer hover:border-emerald-500/40 transition-all"
+                            >
+                                <div className="flex items-center gap-2 mb-3">
+                                    <CircleDollarSign className="w-5 h-5 text-emerald-400" />
+                                    <h3 className="font-semibold text-emerald-400">Contas a Receber</h3>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-neutral-400 text-sm">{pendingIncomes.count} pendente{pendingIncomes.count !== 1 ? 's' : ''}</span>
+                                        <span className="font-bold text-lg text-emerald-400">{formatCurrency(pendingIncomes.total)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -367,11 +435,90 @@ export default function ReportsPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Modal: Contas a Pagar */}
+                {activeModal === 'payables' && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setActiveModal(null)}>
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto space-y-4" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-white">Contas a Pagar</h3>
+                                <button onClick={() => setActiveModal(null)} className="text-neutral-400 hover:text-white"><X className="w-5 h-5" /></button>
+                            </div>
+                            <p className="text-sm text-neutral-400">
+                                Despesas pendentes com vencimento em {MONTHS[month - 1]}/{year}.
+                            </p>
+
+                            {pendingExpenses.movements.length === 0 ? (
+                                <p className="text-neutral-500 text-center py-8">Nenhuma conta a pagar este mês 🎉</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {pendingExpenses.movements.map((m, i) => (
+                                        <div key={i} className="flex justify-between items-center p-3 bg-neutral-800/30 rounded-lg border border-neutral-800">
+                                            <div>
+                                                <p className="text-white font-medium">{m.description}</p>
+                                                <div className="flex gap-2 text-xs text-neutral-500">
+                                                    <span>Vence {new Date(m.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                                                    {m.category && <span className="text-neutral-600">• {m.category}</span>}
+                                                </div>
+                                            </div>
+                                            <span className="text-orange-400 font-medium">{formatCurrency(m.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="border-t border-neutral-800 pt-4 flex justify-between">
+                                <span className="font-medium text-neutral-300">Total a Pagar</span>
+                                <span className="font-bold text-lg text-orange-400">{formatCurrency(pendingExpenses.total)}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal: Contas a Receber */}
+                {activeModal === 'receivables' && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setActiveModal(null)}>
+                        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto space-y-4" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-white">Contas a Receber</h3>
+                                <button onClick={() => setActiveModal(null)} className="text-neutral-400 hover:text-white"><X className="w-5 h-5" /></button>
+                            </div>
+                            <p className="text-sm text-neutral-400">
+                                Receitas pendentes com previsão em {MONTHS[month - 1]}/{year}.
+                            </p>
+
+                            {pendingIncomes.movements.length === 0 ? (
+                                <p className="text-neutral-500 text-center py-8">Nenhuma receita pendente este mês</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {pendingIncomes.movements.map((m, i) => (
+                                        <div key={i} className="flex justify-between items-center p-3 bg-neutral-800/30 rounded-lg border border-neutral-800">
+                                            <div>
+                                                <p className="text-white font-medium">{m.description}</p>
+                                                <div className="flex gap-2 text-xs text-neutral-500">
+                                                    <span>Previsto {new Date(m.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                                                    {m.category && <span className="text-neutral-600">• {m.category}</span>}
+                                                </div>
+                                            </div>
+                                            <span className="text-emerald-400 font-medium">{formatCurrency(m.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="border-t border-neutral-800 pt-4 flex justify-between">
+                                <span className="font-medium text-neutral-300">Total a Receber</span>
+                                <span className="font-bold text-lg text-emerald-400">{formatCurrency(pendingIncomes.total)}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* PRINT VIEW (Hidden on Screen) */}
-            {report && (
-                <div className="hidden print:block p-8 bg-white text-black">
+            {/* PRINT VIEW: Relatório Financeiro */}
+            {printMode === 'financial' && report && (
+                <div className="hidden print:block p-8 bg-white text-black print:overflow-visible print:min-h-screen">
+                    <style>{`@media print { html, body { background: white !important; } .print\\:hidden { display: none !important; height: 0 !important; overflow: hidden !important; } * { scrollbar-width: none !important; } ::-webkit-scrollbar { display: none !important; } }`}</style>
                     <h1 className="text-2xl font-bold mb-2">Relatório Financeiro - {MONTHS[month - 1]} {year}</h1>
                     <p className="text-sm text-gray-600 mb-8">Gerado em {new Date().toLocaleDateString('pt-BR')}</p>
 
@@ -414,14 +561,83 @@ export default function ReportsPage() {
                                             {m.is_reserve && <span className="text-xs ml-2 text-gray-500">(Reserva)</span>}
                                         </td>
                                         <td className="py-2 text-gray-600">{m.category || '-'}</td>
-                                        <td className="py-2 capitalize">{m.type === 'income' ? 'Receita' : 'Despesa'}</td>
-                                        <td className={`py-2 text-right ${m.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
-                                            {formatCurrency(m.amount)}
-                                        </td>
+                                        <td className="py-2">{m.type === 'income' ? 'Receita' : 'Despesa'}</td>
+                                        <td className="py-2 text-right">{m.type === 'income' ? '+' : '-'}{formatCurrency(m.amount)}</td>
                                     </tr>
                                 ))}
                         </tbody>
                     </table>
+                </div>
+            )}
+
+            {/* PRINT VIEW: Contas Pendentes */}
+            {printMode === 'pending' && (
+                <div className="hidden print:block p-8 bg-white text-black print:overflow-visible print:min-h-screen">
+                    <style>{`@media print { html, body { background: white !important; } .print\\:hidden { display: none !important; height: 0 !important; overflow: hidden !important; } * { scrollbar-width: none !important; } ::-webkit-scrollbar { display: none !important; } }`}</style>
+                    <h1 className="text-2xl font-bold mb-2">Contas Pendentes - {MONTHS[month - 1]} {year}</h1>
+                    <p className="text-sm text-gray-600 mb-8">Gerado em {new Date().toLocaleDateString('pt-BR')}</p>
+
+                    {/* Contas a Pagar */}
+                    <h2 className="text-xl font-bold mb-4">Contas a Pagar</h2>
+                    {pendingExpenses.movements.length === 0 ? (
+                        <p className="text-gray-500 mb-8">Nenhuma conta a pagar este mês.</p>
+                    ) : (
+                        <table className="w-full text-sm text-left mb-8">
+                            <thead>
+                                <tr className="border-b-2 border-gray-300">
+                                    <th className="py-2">Vencimento</th>
+                                    <th className="py-2">Descrição</th>
+                                    <th className="py-2">Categoria</th>
+                                    <th className="py-2 text-right">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pendingExpenses.movements.map((m, i) => (
+                                    <tr key={i} className="border-b border-gray-100">
+                                        <td className="py-2">{new Date(m.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                                        <td className="py-2">{m.description}</td>
+                                        <td className="py-2 text-gray-600">{m.category || '-'}</td>
+                                        <td className="py-2 text-right">{formatCurrency(m.amount)}</td>
+                                    </tr>
+                                ))}
+                                <tr className="border-t-2 border-gray-300 font-bold">
+                                    <td colSpan={3} className="py-2">Total a Pagar</td>
+                                    <td className="py-2 text-right">{formatCurrency(pendingExpenses.total)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    )}
+
+                    {/* Contas a Receber */}
+                    <h2 className="text-xl font-bold mb-4">Contas a Receber</h2>
+                    {pendingIncomes.movements.length === 0 ? (
+                        <p className="text-gray-500 mb-8">Nenhuma conta a receber este mês.</p>
+                    ) : (
+                        <table className="w-full text-sm text-left">
+                            <thead>
+                                <tr className="border-b-2 border-gray-300">
+                                    <th className="py-2">Previsão</th>
+                                    <th className="py-2">Descrição</th>
+                                    <th className="py-2">Categoria</th>
+                                    <th className="py-2 text-right">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pendingIncomes.movements.map((m, i) => (
+                                    <tr key={i} className="border-b border-gray-100">
+                                        <td className="py-2">{new Date(m.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                                        <td className="py-2">{m.description}</td>
+                                        <td className="py-2 text-gray-600">{m.category || '-'}</td>
+                                        <td className="py-2 text-right">{formatCurrency(m.amount)}</td>
+                                    </tr>
+                                ))}
+                                <tr className="border-t-2 border-gray-300 font-bold">
+                                    <td colSpan={3} className="py-2">Total a Receber</td>
+                                    <td className="py-2 text-right">{formatCurrency(pendingIncomes.total)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             )}
         </>

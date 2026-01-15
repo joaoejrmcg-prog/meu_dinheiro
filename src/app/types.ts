@@ -80,6 +80,9 @@ export interface Movement {
 
     is_paid: boolean;
 
+    // Joined fields (optional - populated by getMovements)
+    account_name?: string;
+
     created_at: string;
 }
 
@@ -107,8 +110,14 @@ export type IntentType =
     | 'BLOCKED_FEATURE'
     | 'CONFIRMATION_REQUIRED'
     | 'RECONCILE_PAYMENT'
+    | 'UPDATE_PENDING_AMOUNT'
     | 'TRANSFER_CONFIRM_NEGATIVE'
     | 'DELETE_LAST_MOVEMENT'
+    | 'CORRECT_LAST_MOVEMENT'
+    | 'CORRECT_LAST_ACCOUNT'
+    | 'SET_DEFAULT_ACCOUNT'
+    | 'CREATE_RECURRENCE'
+    | 'DELETE_RECURRENCE'
     | 'NAVIGATE'
     | 'UNKNOWN';
 
@@ -119,6 +128,7 @@ export interface AIResponse {
     spokenMessage?: string;
     confidence: number;
     audio?: string;
+    hitMilestone?: boolean; // True when user hits 10 actions (level progression)
 }
 
 export interface Client {

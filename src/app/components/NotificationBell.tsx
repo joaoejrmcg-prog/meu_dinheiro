@@ -97,6 +97,27 @@ export default function NotificationBell() {
         }
     };
 
+    const markAllAsRead = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+            if (unreadIds.length === 0) return;
+
+            await supabase
+                .from('notifications')
+                .update({ read: true })
+                .eq('user_id', user.id)
+                .eq('read', false);
+
+            // Update local state
+            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        } catch (error) {
+            console.error('Error marking notifications as read:', error);
+        }
+    };
+
     const getIcon = (type: string) => {
         switch (type) {
             case 'success': return <CheckCircle className="w-5 h-5 text-green-400" />;
@@ -120,7 +141,10 @@ export default function NotificationBell() {
     return (
         <>
             <button
-                onClick={() => setIsOpen(true)}
+                onClick={() => {
+                    setIsOpen(true);
+                    markAllAsRead();
+                }}
                 className="p-2 text-neutral-400 hover:text-blue-400 transition-colors relative group"
                 title="Notificações"
             >

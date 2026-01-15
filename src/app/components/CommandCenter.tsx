@@ -169,6 +169,24 @@ export default function CommandCenter() {
                     </div>
                 ))}
 
+                {/* Thinking Indicator - Animated dots */}
+                {isProcessing && (
+                    <div className="flex justify-start">
+                        <div className="max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 bg-neutral-800 text-neutral-100 rounded-bl-md border border-neutral-700">
+                            <div className="flex items-center gap-2 mb-1 opacity-60 text-xs uppercase tracking-wider font-medium">
+                                <Bot className="w-3 h-3" />
+                                IA
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 bg-[var(--primary)] rounded-full animate-[pulse_1s_ease-in-out_0s_infinite]" />
+                                <span className="w-2 h-2 bg-[var(--primary)] rounded-full animate-[pulse_1s_ease-in-out_0.2s_infinite]" />
+                                <span className="w-2 h-2 bg-[var(--primary)] rounded-full animate-[pulse_1s_ease-in-out_0.4s_infinite]" />
+                                <span className="ml-2 text-sm text-neutral-400">Pensando...</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Quick Action Buttons */}
                 {quickActions.length > 0 && !isProcessing && (
                     <div className="flex flex-wrap gap-2 ml-4 mt-2 animate-in fade-in slide-in-from-bottom-2 duration-300">

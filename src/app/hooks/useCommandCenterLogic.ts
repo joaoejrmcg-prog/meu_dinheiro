@@ -57,6 +57,8 @@ export function useCommandCenterLogic() {
         dueDate?: string;
         type?: 'income' | 'expense';
         category?: string;
+        payment_method?: string;  // 'bank' for PIX/Débito
+        account_name?: string;    // Specific account if provided
     } | null>(null);
 
     // Reconciliation state for multiple match scenarios
@@ -87,7 +89,7 @@ export function useCommandCenterLogic() {
         const levelIntros: Record<string, { step: TutorialStep; content: string; buttonLabel: string; buttonValue: string }> = {
             'START_L2': {
                 step: 'L2_INTRO',
-                content: "Muito bem! 🚀\n\nAgora vamos organizar sua vida financeira em **3 passos rápidos**:\n\n1️⃣ **Contas e Bancos**\n2️⃣ **Transferências**\n3️⃣ **Planejamento Futuro** (Contas fixas e agendamentos)\n\nVamos lá?",
+                content: "Muito bem! 🚀\n\nVamos expandir seu controle financeiro em **3 passos rápidos**:\n\n1️⃣ **Contas e Bancos**\n2️⃣ **Transferências**\n3️⃣ **Planejamento Futuro** (Contas fixas e agendamentos)\n\nVamos lá?",
                 buttonLabel: 'Continuar',
                 buttonValue: 'L2_CONTINUE_INTRO'
             },
@@ -111,8 +113,7 @@ export function useCommandCenterLogic() {
         if (intro) {
             console.log(`Context action ${tutorialAction} received!`);
             setTutorialStep(intro.step);
-            setMessages([]);
-
+            // Use single setMessages call to avoid flicker (don't call setMessages([]) first!)
             setMessages([{
                 id: `${tutorialAction.toLowerCase()}-intro`,
                 role: 'assistant',
@@ -125,7 +126,6 @@ export function useCommandCenterLogic() {
     // Load initial state
     useEffect(() => {
         let isMounted = true;
-        let timeout1: NodeJS.Timeout;
 
         const init = async () => {
             const count = await getDailyUsage();
@@ -149,7 +149,6 @@ export function useCommandCenterLogic() {
 
                 if (tutorialStartedRef.current) return;
                 tutorialStartedRef.current = true;
-
                 setTutorialStep('GREETING');
 
                 // Use functional update to avoid race conditions
@@ -159,26 +158,10 @@ export function useCommandCenterLogic() {
                         id: 'tutorial-greeting', // Fixed ID to prevent duplicates
                         role: 'assistant',
                         content: 'Oi 😊\nSou seu agente financeiro.\nVamos começar só com o básico: ver quanto entra e quanto sai.\nDepois eu te mostro outras coisas.',
-                        isTyping: true
+                        isTyping: true,
+                        buttons: [{ label: 'Continuar', value: 'L1_CONTINUE_GREETING', variant: 'primary' }]
                     }];
                 });
-
-                // After greeting, ask for balance
-                timeout1 = setTimeout(() => {
-                    if (!isMounted) return;
-                    setTutorialStep('ASK_BALANCE');
-                    setMessages(prev => {
-                        // Check if we already have the balance question
-                        if (prev.some(m => m.id === 'tutorial-balance')) return prev;
-
-                        return [...prev, {
-                            id: 'tutorial-balance', // Fixed ID
-                            role: 'assistant',
-                            content: 'Me diga: quanto dinheiro você tem disponível pra usar e pagar suas contas?\n\n💡 Se não tiver certeza, chuta! Podemos corrigir depois.',
-                            isTyping: true
-                        }];
-                    });
-                }, 5000);
             } else {
                 setMessages(prev => {
                     if (prev.length > 0) return prev;
@@ -205,7 +188,6 @@ export function useCommandCenterLogic() {
 
         return () => {
             isMounted = false;
-            clearTimeout(timeout1);
             window.removeEventListener('terms-accepted', handleTermsAccepted);
         };
     }, []);
@@ -286,23 +268,14 @@ export function useCommandCenterLogic() {
     // Tutorial flow functions
     const startTutorial = useCallback(() => {
         setTutorialStep('GREETING');
-        setMessages([]);  // Clear previous messages
-        addMessage('assistant',
-            "Oi 😊\nSou seu agente financeiro.\nVamos começar só com o básico: ver quanto entra e quanto sai.\nDepois eu te mostro outras coisas.",
-            'text',
-            { isTyping: true, skipRefund: true }
-        );
-
-        // After greeting, ask for balance
-        setTimeout(() => {
-            setTutorialStep('ASK_BALANCE');
-            addMessage('assistant',
-                "Me diga: quanto dinheiro você tem disponível pra usar e pagar suas contas?\n\n💡 Se não tiver certeza, chuta! Podemos corrigir depois.",
-                'text',
-                { isTyping: true, skipRefund: true }
-            );
-        }, 5000); // Wait for greeting to finish typing
-    }, [addMessage]);
+        // Use setMessages directly (like L2 does) to avoid flicker from addMessage + setMessages combo
+        setMessages([{
+            id: 'tutorial-greeting-' + Date.now(),
+            role: 'assistant',
+            content: 'Oi 😊\nSou seu agente financeiro.\nVamos começar só com o básico: ver quanto entra e quanto sai.\nDepois eu te mostro outras coisas.',
+            buttons: [{ label: 'Continuar', value: 'L1_CONTINUE_GREETING', variant: 'primary' }]
+        }]);
+    }, []);
 
     const skipTutorial = useCallback(async () => {
         await updateUserLevel(1 as UserLevel);
@@ -316,6 +289,17 @@ export function useCommandCenterLogic() {
     }, [addMessage]);
 
     const processTutorialInput = useCallback(async (userInput: string): Promise<boolean> => {
+        // Level 1: Greeting -> Ask Balance
+        if (userInput === 'L1_CONTINUE_GREETING') {
+            setTutorialStep('ASK_BALANCE');
+            addMessage('assistant',
+                "Me diga: quanto dinheiro você tem disponível pra usar e pagar suas contas?\n\n💡 Se não tiver certeza, chuta! Podemos corrigir depois.",
+                'text',
+                { isTyping: true, skipRefund: true }
+            );
+            return true;
+        }
+
         if (tutorialStep === 'ASK_BALANCE') {
             // Try to extract a number from the input
             const cleaned = userInput.replace(/[^\d.,]/g, '').replace(',', '.');
@@ -337,32 +321,36 @@ export function useCommandCenterLogic() {
 
             const formatted = value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-            addMessage('assistant',
-                `Perfeito! Vou considerar que você tem ${formatted} disponíveis agora.\n\nSe precisar corrigir, diga: "Corrija meu saldo inicial pra R$ X"\n\nAgora, sempre que você gastar ou receber dinheiro, é só me avisar.`,
-                'text',
-                { isTyping: true, skipRefund: true }
-            );
-
-            // Show final message after a delay
-            setTimeout(async () => {
-                // Update user level to 1
-                await updateUserLevel(1 as UserLevel);
-                setUserLevel(1);
-
-                // Dispatch event to update Sidebar
-                if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 1 } }));
-                }
-
-                setTutorialStep('IDLE');
-                addMessage('assistant',
-                    "🎉 Parabéns! Estamos prontos pra começar! Agora você pode me dizer sempre que gastar ou receber dinheiro.\n\nExemplos:\n• \"Gastei 50 no mercado\"\n• \"Recebi 1000 do salário\"\n• \"Como estou esse mês?\"",
-                    'success',
-                    { isTyping: true, skipRefund: true }
-                );
-            }, 8000);
+            // Use setMessages directly (like L2 does) with a Continue button
+            setMessages(prev => [...prev, {
+                id: 'l1-balance-set-' + Date.now(),
+                role: 'assistant',
+                content: `Perfeito! Vou considerar que você tem ${formatted} disponíveis agora.\n\nSe precisar corrigir, diga: "Corrija meu saldo inicial pra R$ X"\n\nAgora, sempre que você gastar ou receber dinheiro, é só me avisar.`,
+                buttons: [{ label: 'Continuar', value: 'L1_FINISH', variant: 'primary' }]
+            }]);
 
             return true; // Handled
+        }
+
+        // L1 Finish - Final message
+        if (userInput === 'L1_FINISH') {
+            // Update user level to 1
+            await updateUserLevel(1 as UserLevel);
+            setUserLevel(1);
+
+            // Dispatch event to update Sidebar
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 1 } }));
+            }
+
+            setTutorialStep('IDLE');
+            setMessages(prev => [...prev, {
+                id: 'l1-done-' + Date.now(),
+                role: 'assistant',
+                content: "🎉 Parabéns! Estamos prontos pra começar!\n\nAgora você pode me dizer sempre que gastar ou receber dinheiro:\n• \"Gastei 50 no mercado\"\n• \"Recebi 1000 do salário\"\n• \"Como estou esse mês?\"\n\n📊 Quer ver seus lançamentos? Abra no menu a tela **Financeiro**, ou me peça: \"Abre a tela Financeiro\".",
+                type: 'success'
+            }]);
+            return true;
         }
 
         // ===== LEVEL 2 TUTORIAL =====
@@ -373,7 +361,7 @@ export function useCommandCenterLogic() {
             setMessages(prev => [...prev, {
                 id: 'l2-bank-ask',
                 role: 'assistant',
-                content: "🏦 **1. Contas e Bancos**\n\nUma conta é simplesmente onde o dinheiro está, como Nubank, Itaú ou o dinheiro da carteira.\n\nA carteira continua existindo, mas agora você pode ter dinheiro em vários lugares.\n\nVocê tem conta em algum banco?",
+                content: "🏦 **1. Contas e Bancos**\n\nUma conta é simplesmente onde o dinheiro está.\n\nO dinheiro no bolso ou em casa chamamos de **Carteira**. O dinheiro no banco é outra conta, como **Nubank** ou **Itaú**.\n\nAgora você pode ter dinheiro em vários lugares.\n\nVocê tem conta em algum banco?",
                 buttons: [
                     { label: 'Sim', value: 'L2_BANK_YES', variant: 'primary' },
                     { label: 'Não', value: 'L2_BANK_NO', variant: 'secondary' }
@@ -426,9 +414,9 @@ export function useCommandCenterLogic() {
                 return true;
             }
 
-            // Create the bank account
-            const { createAccount, setDefaultAccount } = await import('../actions/assets');
-            const newAccount = await createAccount({ name: bankName, type: 'bank', balance: 0 });
+            // Create or get the bank account
+            const { getOrCreateBankAccount, setDefaultAccount } = await import('../actions/assets');
+            const newAccount = await getOrCreateBankAccount(bankName);
             if (newAccount?.id) {
                 await setDefaultAccount(newAccount.id);
             }
@@ -488,9 +476,9 @@ export function useCommandCenterLogic() {
                 return true;
             }
 
-            // Create the bank account
-            const { createAccount, setDefaultAccount } = await import('../actions/assets');
-            const newAccount = await createAccount({ name: bankName, type: 'bank', balance: 0 });
+            // Create or get the bank account
+            const { getOrCreateBankAccount, setDefaultAccount } = await import('../actions/assets');
+            const newAccount = await getOrCreateBankAccount(bankName);
             if (newAccount?.id) {
                 await setDefaultAccount(newAccount.id);
             }
@@ -536,7 +524,7 @@ export function useCommandCenterLogic() {
             setMessages(prev => [...prev, {
                 id: 'l2-recurrence',
                 role: 'assistant',
-                content: "📅 **3. Planejamento Futuro**\n\nAlgumas contas se repetem todo mês, como aluguel ou salário.\nIsso são contas recorrentes.\n\nVocê pode dizer coisas como:\n\"Pago aluguel de 1500 todo dia 10\"\nou\n\"Recebo salário todo mês\".\n\nEu vou lembrar você quando estiver perto de acontecer!",
+                content: "📅 **3. Planejamento Futuro**\n\nAlgumas contas se repetem todo mês, como aluguel ou salário.\nIsso são contas recorrentes.\n\nVocê pode dizer coisas como:\n\"Pago aluguel de 1500 todo dia 10\"\nou\n\"Recebo salário todo mês no dia 5\".\n\nEu vou lembrar você quando estiver perto de acontecer!",
                 buttons: [{ label: 'Entendi', value: 'L2_GO_SCHEDULE', variant: 'primary' }]
             }]);
             return true;
@@ -569,7 +557,7 @@ export function useCommandCenterLogic() {
             setMessages(prev => [...prev, {
                 id: 'l2-done',
                 role: 'assistant',
-                content: "🎉 Parabéns! Agora você já pode:\n• Usar vários bancos\n• Mover dinheiro entre eles\n• Criar contas que se repetem\n• Agendar pagamentos para o futuro\n\nContinue usando no seu ritmo.\nQuando quiser lidar com coisas mais avançadas, como cartão de crédito, é só me avisar!",
+                content: "🎉 Parabéns! Agora você já pode:\n• Usar vários bancos\n• Mover dinheiro entre eles\n• Criar contas que se repetem\n• Agendar pagamentos para o futuro\n\nContinue usando no seu ritmo!",
                 type: 'success'
             }]);
             return true;
@@ -615,7 +603,7 @@ export function useCommandCenterLogic() {
                     // Re-trigger the intro message for that level
                     const intros: Record<number, any> = {
                         2: {
-                            content: "Muito bem! 🚀\n\nAgora vamos organizar sua vida financeira em **3 passos rápidos**:\n\n1️⃣ **Contas e Bancos**\n2️⃣ **Transferências**\n3️⃣ **Planejamento Futuro** (Contas fixas e agendamentos)\n\nVamos lá?",
+                            content: "Muito bem! 🚀\n\nVamos expandir seu controle financeiro em **3 passos rápidos**:\n\n1️⃣ **Contas e Bancos**\n2️⃣ **Transferências**\n3️⃣ **Planejamento Futuro** (Contas fixas e agendamentos)\n\nVamos lá?",
                             buttonLabel: 'Continuar',
                             buttonValue: 'L2_CONTINUE_INTRO'
                         },
@@ -652,7 +640,7 @@ export function useCommandCenterLogic() {
         // Check for cancel/restart commands
         const cancelKeywords = [
             'cancela', 'cancelar', 'deixa pra lá', 'deixa pra la', 'esquece',
-            'me enganei', 'começar de novo', 'comecar de novo', 'reiniciar',
+            'começar de novo', 'comecar de novo', 'reiniciar',
             'era isso não', 'era isso nao', 'não era isso', 'nao era isso',
             'parar', 'abortar', 'desiste', 'desistir'
         ];
@@ -711,6 +699,73 @@ export function useCommandCenterLogic() {
                 window.dispatchEvent(new CustomEvent('transactionUpdated'));
             }
             return;
+        }
+
+        // Check for navigation commands
+        const navigationMap: Record<string, { keywords: string[], route: string, screenName: string, minLevel: number }> = {
+            financeiro: {
+                keywords: ['abrir financeiro', 'abre financeiro', 'abra financeiro', 'abre a tela financeiro', 'abra a tela financeiro', 'ir para financeiro', 'vai pro financeiro', 'mostrar financeiro', 'mostra financeiro', 'tela financeiro', 'tela de financeiro', 'ver financeiro'],
+                route: '/financial',
+                screenName: 'Financeiro',
+                minLevel: 1
+            },
+            relatorios: {
+                keywords: ['abrir relatório', 'abre relatório', 'abra relatório', 'abrir relatorios', 'abre relatorios', 'tela de relatórios', 'abre a tela relatório', 'abre a tela relatorios', 'ver relatórios', 'ver relatorios'],
+                route: '/reports',
+                screenName: 'Relatórios',
+                minLevel: 1
+            },
+            calendario: {
+                keywords: ['abrir calendário', 'abre calendário', 'abra calendário', 'abrir calendario', 'abre calendario', 'abrir agenda', 'abre agenda', 'abre a tela calendário', 'abre a tela calendario', 'abre a tela agenda', 'ver calendário', 'ver calendario', 'ver agenda', 'tela calendario', 'tela calendário'],
+                route: '/calendar',
+                screenName: 'Calendário',
+                minLevel: 2
+            },
+            contas: {
+                keywords: ['abrir contas', 'abre contas', 'abre a tela contas', 'abrir cartões', 'abre cartões', 'abre a tela cartões', 'contas e cartões', 'ver contas', 'ver cartões'],
+                route: '/assets',
+                screenName: 'Contas e Cartões',
+                minLevel: 2
+            },
+            planejamento: {
+                keywords: ['abrir planejamento', 'abre planejamento', 'abre a tela planejamento', 'ver planejamento', 'tela planejamento'],
+                route: '/planning',
+                screenName: 'Planejamento',
+                minLevel: 4
+            },
+            perfil: {
+                keywords: ['abrir perfil', 'abre perfil', 'abra perfil', 'meu perfil', 'abre a tela perfil', 'ver perfil'],
+                route: '/profile',
+                screenName: 'Perfil',
+                minLevel: 0
+            },
+            dashboard: {
+                keywords: ['abrir visão geral', 'abre visão geral', 'abre dashboard', 'abrir dashboard', 'ver visão geral', 'abre a tela visão geral'],
+                route: '/dashboard',
+                screenName: 'Visão Geral',
+                minLevel: 1
+            }
+        };
+
+        for (const [, config] of Object.entries(navigationMap)) {
+            const isNavigationCommand = config.keywords.some(keyword => lowerInput.includes(keyword));
+            if (isNavigationCommand) {
+                // Check if user has the required level
+                if (userLevel < config.minLevel) {
+                    addMessage('assistant',
+                        `🔒 A tela **${config.screenName}** faz parte de um nível mais avançado.\n\nPor enquanto, continue praticando com as funções básicas no seu ritmo. Quando se sentir confortável e quiser explorar mais, o botão **"Ir para Nível ${config.minLevel}"** estará lá embaixo te esperando. Sem pressa! 😊`,
+                        'text',
+                        { skipRefund: true }
+                    );
+                    return;
+                }
+
+                addMessage('assistant', `📍 Abrindo a tela **${config.screenName}**...`, 'success');
+                setTimeout(() => {
+                    router.push(config.route);
+                }, 500);
+                return;
+            }
         }
 
         // If in tutorial, process tutorial input and BLOCK normal AI
@@ -797,6 +852,69 @@ export function useCommandCenterLogic() {
         }
 
         // ==========================================
+        // SLOT-FILLING: User providing bank name after we asked
+        // ==========================================
+        if (!isJustNumber && pendingSlots && pendingSlots.payment_method === 'bank' && pendingSlots.amount && !pendingSlots.account_name) {
+            // User is providing bank name
+            const bankName = userInput.trim();
+            const { getAccountByName } = await import('../actions/assets');
+            const account = await getAccountByName(bankName);
+
+            if (account) {
+                // Bank found - complete the transaction
+                const { createMovement } = await import('../actions/finance-core');
+                const { getCategoryByName } = await import('../actions/categories');
+
+                let categoryId = undefined;
+                if (pendingSlots.category) {
+                    const category = await getCategoryByName(pendingSlots.category);
+                    if (category) {
+                        categoryId = category.id;
+                    }
+                }
+
+                const result = await createMovement({
+                    description: pendingSlots.description || '',
+                    amount: pendingSlots.amount,
+                    type: pendingSlots.type || 'expense',
+                    date: pendingSlots.date || new Date().toISOString().split('T')[0],
+                    dueDate: pendingSlots.dueDate,
+                    isPaid: pendingSlots.dueDate ? false : true,
+                    categoryId: categoryId,
+                    accountId: account.id,
+                });
+
+                if (result.success) {
+                    const amountFormatted = pendingSlots.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    const typeLabel = pendingSlots.type === 'income' ? 'Receita' : 'Despesa';
+                    const categoryLabel = pendingSlots.category ? ` em ${pendingSlots.category}` : '';
+
+                    addMessage('assistant',
+                        `✅ Anotado! ${typeLabel} de ${amountFormatted} com ${pendingSlots.description}${categoryLabel}, no ${account.name}.`,
+                        'success'
+                    );
+                    setPendingSlots(null);
+
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                    }
+                    return;
+                } else {
+                    addMessage('assistant', `❌ Erro ao registrar: ${result.error}`, 'error');
+                    setPendingSlots(null);
+                    return;
+                }
+            } else {
+                // Bank not found - ask again
+                addMessage('assistant',
+                    `❓ Não encontrei a conta "${bankName}". Qual conta você quer usar?\n\n💡 Se quiser criar uma nova conta, cancela e me diz: "Criar conta no ${bankName}"`,
+                    'text'
+                );
+                return;
+            }
+        }
+
+        // ==========================================
         // SLOT-FILLING LOGIC: Check if we can complete pending slots
         // ==========================================
 
@@ -812,10 +930,24 @@ export function useCommandCenterLogic() {
                     amount: amount
                 };
 
+                // Check if this is a PIX/Débito payment with default account = Carteira
+                if (completedSlots.payment_method === 'bank' && !completedSlots.account_name) {
+                    const { getDefaultAccount } = await import('../actions/assets');
+                    const defaultAccount = await getDefaultAccount();
+
+                    if (defaultAccount?.type === 'wallet') {
+                        // Need to ask which bank account
+                        setPendingSlots(completedSlots);
+                        addMessage('assistant', '💳 O débito sai de qual conta bancária?', 'text');
+                        return;
+                    }
+                }
+
                 // All required slots filled (description + amount) -> execute directly
                 try {
                     const { createMovement } = await import('../actions/finance-core');
                     const { getCategoryByName } = await import('../actions/categories');
+                    const { getDefaultAccount, getAccountByName } = await import('../actions/assets');
 
                     // Lookup category ID if we have a category name
                     let categoryId = undefined;
@@ -823,6 +955,21 @@ export function useCommandCenterLogic() {
                         const category = await getCategoryByName(completedSlots.category);
                         if (category) {
                             categoryId = category.id;
+                        }
+                    }
+
+                    // Determine account ID
+                    let accountId = undefined;
+                    if (completedSlots.account_name) {
+                        const account = await getAccountByName(completedSlots.account_name);
+                        if (account) {
+                            accountId = account.id;
+                        }
+                    } else if (completedSlots.payment_method === 'bank') {
+                        // Use default bank account
+                        const defaultAccount = await getDefaultAccount();
+                        if (defaultAccount && defaultAccount.type !== 'wallet') {
+                            accountId = defaultAccount.id;
                         }
                     }
 
@@ -834,6 +981,7 @@ export function useCommandCenterLogic() {
                         dueDate: completedSlots.dueDate,
                         isPaid: completedSlots.dueDate ? false : true,
                         categoryId: categoryId,
+                        accountId: accountId,
                     });
 
                     if (result.success) {
@@ -898,6 +1046,16 @@ export function useCommandCenterLogic() {
             // HANDLE RECONCILE_PAYMENT INTENT
             // ==========================================
             if (response.intent === 'RECONCILE_PAYMENT' && response.data?.search_term) {
+                // Check if backend already processed successfully (message starts with ✅)
+                if (response.message.startsWith('✅')) {
+                    addMessage('assistant', response.message, 'success');
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                    }
+                    return;
+                }
+
+                // Backend didn't find/process it - use frontend logic for multiple matches
                 const { findPendingMatches, markMovementAsPaid } = await import('../actions/reconcile');
                 const { createMovement } = await import('../actions/finance-core');
 
@@ -1000,6 +1158,8 @@ export function useCommandCenterLogic() {
                     dueDate: response.data.due_date,
                     type: response.data.type,
                     category: response.data.category,
+                    payment_method: response.data.payment_method,  // Save PIX/Débito info
+                    account_name: response.data.account_name,      // Save specific account
                 };
                 setPendingSlots(partialSlots);
                 console.log('📝 Saved pending slots:', partialSlots);
@@ -1007,6 +1167,25 @@ export function useCommandCenterLogic() {
                 // Success - clear pending slots
                 setPendingSlots(null);
                 setPendingReconciliation(null);
+
+                // Check if user hit milestone (10 actions)
+                if (response.hitMilestone) {
+                    // Dispatch celebration event
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('celebrateLevelUp'));
+                    }
+
+                    // Add milestone message after the success message
+                    setTimeout(() => {
+                        const nextLevel = userLevel + 1;
+                        setMessages(prev => [...prev, {
+                            id: 'milestone-' + Date.now(),
+                            role: 'assistant',
+                            content: `🎉 **Parabéns!** Você completou 10 ações neste nível!\n\nSe estiver se sentindo confortável, o botão **"Ir para Nível ${nextLevel}"** está lá embaixo esperando você. Novas funcionalidades te aguardam! 🚀`,
+                            type: 'success'
+                        }]);
+                    }, 1500);
+                }
             }
 
             const msgType = response.message.includes('❌') ? 'error' : (response.message.includes('✅') ? 'success' : 'text');

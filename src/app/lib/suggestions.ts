@@ -18,7 +18,7 @@ const HOME_SUGGESTIONS: Record<number, string[]> = {
         "Transferir 100 da carteira pro banco",
         "Paguei conta de luz 150",
         "Qual meu saldo total?",
-        "Quanto gastei com Lazer?",
+        "Dica: errou a conta? Diga 'foi no [nome]'",
     ],
     3: [
         "Parcela de 200 no cartão",

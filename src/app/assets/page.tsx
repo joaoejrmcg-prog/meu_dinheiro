@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Wallet, CreditCard, Plus, Trash2, Edit2, Building2, PiggyBank, X, Check, Sparkles, ArrowRight, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
-import { getAccounts, createAccount, deleteAccount, getCreditCards, createCreditCard, deleteCreditCard } from "../actions/assets";
+import { getAccounts, createAccount, deleteAccount, getCreditCards, createCreditCard, deleteCreditCard, recalculateBalances } from "../actions/assets";
 import { createTransfer } from "../actions/financial";
 import { Account, CreditCard as CreditCardType } from "../types";
 import { cn } from "../lib/utils";
@@ -32,6 +32,8 @@ export default function AssetsPage() {
 
     const loadData = async () => {
         setLoading(true);
+        // Recalculate balances first to ensure fresh data
+        await recalculateBalances();
         const [accountsData, cardsData, level] = await Promise.all([
             getAccounts(),
             getCreditCards(),
@@ -77,8 +79,8 @@ export default function AssetsPage() {
             return [
                 { text: '"Transferir 500 para Poupança"', link: '/?tip=transferencia' },
                 { text: '"Agendar pagamento de luz"', link: '/?tip=agendamento' },
-                { text: '"Criar conta de Investimento"', link: '/?tip=investimento' },
-                { text: '"Resumo da semana"', link: '/?tip=resumo' }
+                { text: '"Torna a Carteira minha conta principal"', link: '/?tip=principal' },
+                { text: '"Criar conta no Santander"', link: '/?tip=criar_conta' }
             ];
         } else {
             return [

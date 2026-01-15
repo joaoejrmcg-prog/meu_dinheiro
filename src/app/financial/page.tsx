@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { TrendingDown, TrendingUp, RefreshCw, Plus, Trash2, ChevronLeft, ChevronRight, Calendar, Pencil, X, Sparkles, ArrowRight } from "lucide-react";
-import { getMovements, getRecurrences, getMonthSummary, deleteMovement, createRecurrence, deleteRecurrence, createMovementManual, updateMovement } from "../actions/financial";
+import { TrendingDown, TrendingUp, RefreshCw, Plus, Trash2, ChevronLeft, ChevronRight, Calendar, Pencil, X, Sparkles, ArrowRight, ArrowLeftRight } from "lucide-react";
+import { getMovements, getRecurrences, getMonthSummary, deleteMovement, createRecurrence, deleteRecurrence, updateRecurrence, createMovementManual, updateMovement } from "../actions/financial";
 import { getAccounts, getCreditCards } from "../actions/assets";
 import { getCategories } from "../actions/categories";
 import { Movement, Recurrence, Account, Category, CreditCard } from "../types";
@@ -11,7 +11,7 @@ import { cn } from "../lib/utils";
 import { getUserLevel } from "../actions/profile";
 import { getSuggestionsForLevel } from "../lib/suggestions";
 
-type Tab = 'expenses' | 'income' | 'recurring';
+type Tab = 'expenses' | 'income' | 'transfers' | 'recurring';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -44,14 +44,20 @@ export default function FinancialPage() {
     const loadData = async () => {
         setLoading(true);
 
+        // Determine which type to fetch based on active tab
+        let typeFilter: 'expense' | 'income' | 'transfer' | undefined;
+        if (activeTab === 'expenses') typeFilter = 'expense';
+        else if (activeTab === 'income') typeFilter = 'income';
+        else if (activeTab === 'transfers') typeFilter = 'transfer';
+
         const [movementsData, recurrencesData, summaryData, accountsData, categoriesData, creditCardsData] = await Promise.all([
             getMovements({
                 month,
                 year,
-                type: activeTab === 'expenses' ? 'expense' : activeTab === 'income' ? 'income' : undefined
+                type: typeFilter
             }),
             getRecurrences(),
-            getMonthSummary(month, year),
+            getMonthSummary(month, year, 'paid'), // Only show paid movements in summary
             getAccounts(),
             getCategories(),
             getCreditCards()
@@ -198,6 +204,24 @@ export default function FinancialPage() {
                 </button>
                 <div className="relative flex-1 group">
                     <button
+                        onClick={() => userLevel >= 2 && setActiveTab('transfers')}
+                        disabled={userLevel < 2}
+                        className={cn(
+                            "w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium transition-all",
+                            activeTab === 'transfers'
+                                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                : userLevel < 2
+                                    ? "text-neutral-600 cursor-not-allowed bg-neutral-800/50"
+                                    : "text-neutral-400 hover:text-neutral-200"
+                        )}
+                    >
+                        <ArrowLeftRight className="w-4 h-4" />
+                        Transf.
+                        {userLevel < 2 && <span className="ml-1 text-[10px] bg-neutral-700 text-neutral-400 px-1.5 py-0.5 rounded">Lvl 2</span>}
+                    </button>
+                </div>
+                <div className="relative flex-1 group">
+                    <button
                         onClick={() => userLevel >= 2 && setActiveTab('recurring')}
                         disabled={userLevel < 2}
                         className={cn(
@@ -210,7 +234,7 @@ export default function FinancialPage() {
                         )}
                     >
                         <RefreshCw className="w-4 h-4" />
-                        Recorrentes
+                        Recorr.
                         {userLevel < 2 && <span className="ml-1 text-[10px] bg-neutral-700 text-neutral-400 px-1.5 py-0.5 rounded">Lvl 2</span>}
                     </button>
                 </div>
@@ -242,10 +266,16 @@ export default function FinancialPage() {
                     categories={categories}
                     creditCards={creditCards}
                 />
+            ) : activeTab === 'transfers' ? (
+                <TransfersTab
+                    movements={movements}
+                    onDelete={handleDeleteMovement}
+                    onRefresh={loadData}
+                />
             ) : (
                 <MovementsTab
                     movements={movements}
-                    type={activeTab}
+                    type={activeTab as 'expenses' | 'income'}
                     onDelete={handleDeleteMovement}
                     onRefresh={loadData}
                     accounts={accounts}
@@ -274,6 +304,7 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
         description: '',
         amount: '',
         date: new Date().toISOString().split('T')[0],
+        due_date: '',
         is_paid: true,
         account_id: '',
         category_id: '',
@@ -286,6 +317,7 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
             description: '',
             amount: '',
             date: new Date().toISOString().split('T')[0],
+            due_date: '',
             is_paid: true,
             account_id: '',
             category_id: '',
@@ -302,6 +334,7 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
                 amount: parseFloat(formData.amount),
                 type: isExpense ? 'expense' : 'income',
                 date: formData.date,
+                due_date: formData.due_date || undefined,
                 is_paid: formData.is_paid,
                 account_id: formData.account_id || undefined,
                 category_id: formData.category_id || undefined,
@@ -323,6 +356,7 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
             description: mov.description,
             amount: mov.amount.toString(),
             date: mov.date.split('T')[0],
+            due_date: mov.due_date?.split('T')[0] || '',
             is_paid: mov.is_paid,
             account_id: mov.account_id || '',
             category_id: mov.category_id || '',
@@ -338,6 +372,7 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
                 description: formData.description,
                 amount: parseFloat(formData.amount),
                 date: formData.date,
+                due_date: formData.due_date || undefined,
                 is_paid: formData.is_paid,
                 account_id: formData.account_id || undefined,
                 category_id: formData.category_id || undefined,
@@ -467,11 +502,27 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
                         <input
                             type="checkbox"
                             checked={formData.is_paid}
-                            onChange={(e) => setFormData({ ...formData, is_paid: e.target.checked })}
+                            onChange={(e) => setFormData({ ...formData, is_paid: e.target.checked, due_date: e.target.checked ? '' : formData.due_date })}
                             className="w-4 h-4 rounded"
                         />
                         {isExpense ? 'Já foi pago' : 'Já foi recebido'}
                     </label>
+
+                    {/* Due Date - Show only when not paid */}
+                    {!formData.is_paid && (
+                        <div className="space-y-1">
+                            <label className="text-sm text-neutral-400">Data de Vencimento</label>
+                            <input
+                                type="date"
+                                value={formData.due_date}
+                                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                                className={cn(
+                                    "w-full bg-neutral-800 border rounded-lg px-4 py-3 text-white focus:outline-none",
+                                    isExpense ? "border-orange-500/30 focus:border-orange-500" : "border-blue-500/30 focus:border-blue-500"
+                                )}
+                            />
+                        </div>
+                    )}
                     <div className="flex gap-2">
                         <button
                             onClick={() => { setShowForm(false); setEditingMovement(null); resetForm(); }}
@@ -517,6 +568,9 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
                                 <p className="font-medium text-white">{mov.description}</p>
                                 <p className="text-xs text-neutral-500">
                                     {new Date(mov.date).toLocaleDateString('pt-BR')}
+                                    {mov.account_name && (
+                                        <span className="ml-2 text-neutral-400">• {mov.account_name}</span>
+                                    )}
                                     {!mov.is_paid && mov.due_date && (
                                         <span className="ml-2 text-orange-400">
                                             📅 vence {new Date(mov.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}
@@ -564,6 +618,7 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
     creditCards: CreditCard[];
 }) {
     const [showForm, setShowForm] = useState(false);
+    const [editingRecurrence, setEditingRecurrence] = useState<Recurrence | null>(null);
     const [formData, setFormData] = useState({
         description: '',
         amount: '',
@@ -575,6 +630,19 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
         card_id: ''
     });
     const [saving, setSaving] = useState(false);
+
+    const resetForm = () => {
+        setFormData({
+            description: '',
+            amount: '',
+            type: 'expense',
+            frequency: 'monthly',
+            next_due_date: new Date().toISOString().split('T')[0],
+            account_id: '',
+            category_id: '',
+            card_id: ''
+        });
+    };
 
     const handleCreate = async () => {
         if (!formData.description || !formData.amount) return;
@@ -591,19 +659,48 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
                 card_id: formData.card_id || undefined
             });
             setShowForm(false);
-            setFormData({
-                description: '',
-                amount: '',
-                type: 'expense',
-                frequency: 'monthly',
-                next_due_date: new Date().toISOString().split('T')[0],
-                account_id: '',
-                category_id: '',
-                card_id: ''
-            });
+            resetForm();
             onRefresh();
         } catch (e) {
             console.error(e);
+        }
+        setSaving(false);
+    };
+
+    const handleEdit = (rec: Recurrence) => {
+        setEditingRecurrence(rec);
+        setFormData({
+            description: rec.description,
+            amount: rec.amount.toString(),
+            type: rec.type,
+            frequency: rec.frequency,
+            next_due_date: rec.next_due_date.split('T')[0],
+            account_id: rec.account_id || '',
+            category_id: rec.category_id || '',
+            card_id: rec.card_id || ''
+        });
+    };
+
+    const handleUpdate = async () => {
+        if (!editingRecurrence || !formData.description || !formData.amount) return;
+        setSaving(true);
+        try {
+            await updateRecurrence(editingRecurrence.id, {
+                description: formData.description,
+                amount: parseFloat(formData.amount),
+                type: formData.type,
+                frequency: formData.frequency,
+                next_due_date: formData.next_due_date,
+                account_id: formData.account_id || undefined,
+                category_id: formData.category_id || undefined,
+                card_id: formData.card_id || undefined
+            });
+            setEditingRecurrence(null);
+            resetForm();
+            onRefresh();
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao atualizar recorrência');
         }
         setSaving(false);
     };
@@ -618,7 +715,7 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
         <div className="space-y-4">
             {/* Add Button */}
             <button
-                onClick={() => setShowForm(true)}
+                onClick={() => { setShowForm(true); setEditingRecurrence(null); resetForm(); }}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-neutral-700 text-neutral-400 hover:border-purple-500/50 hover:text-purple-400 transition-all"
             >
                 <Plus className="w-5 h-5" />
@@ -626,7 +723,7 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
             </button>
 
             {/* Form */}
-            {showForm && (
+            {(showForm || editingRecurrence) && (
                 <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-4">
                     <input
                         type="text"
@@ -737,17 +834,17 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
                     </div>
                     <div className="flex gap-2">
                         <button
-                            onClick={() => setShowForm(false)}
+                            onClick={() => { setShowForm(false); setEditingRecurrence(null); resetForm(); }}
                             className="flex-1 py-2.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
                         >
                             Cancelar
                         </button>
                         <button
-                            onClick={handleCreate}
+                            onClick={editingRecurrence ? handleUpdate : handleCreate}
                             disabled={saving || !formData.description || !formData.amount}
                             className="flex-1 py-2.5 rounded-lg bg-purple-500 text-white font-semibold hover:bg-purple-400 disabled:opacity-50"
                         >
-                            {saving ? 'Salvando...' : 'Salvar'}
+                            {saving ? 'Salvando...' : (editingRecurrence ? 'Atualizar' : 'Salvar')}
                         </button>
                     </div>
                 </div>
@@ -785,13 +882,170 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
                                 </p>
                             </div>
                             <button
+                                onClick={() => handleEdit(rec)}
+                                className="p-2 text-neutral-500 hover:text-yellow-400 transition-colors"
+                                title="Editar"
+                            >
+                                <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
                                 onClick={() => handleDelete(rec.id)}
                                 className="p-2 text-neutral-500 hover:text-red-400 transition-colors"
+                                title="Excluir"
                             >
                                 <Trash2 className="w-4 h-4" />
                             </button>
                         </div>
                     ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============ TRANSFERS TAB ============
+function TransfersTab({ movements, onDelete, onRefresh }: {
+    movements: Movement[];
+    onDelete: (id: string) => void;
+    onRefresh: () => void;
+}) {
+    const [editingTransfer, setEditingTransfer] = useState<Movement | null>(null);
+    const [formData, setFormData] = useState({
+        amount: '',
+        date: ''
+    });
+    const [saving, setSaving] = useState(false);
+
+    // Filter only OUT transfers (contain →) to avoid duplicates
+    const outTransfers = movements.filter(m => m.description?.includes('→'));
+
+    const handleEdit = (mov: Movement) => {
+        setEditingTransfer(mov);
+        setFormData({
+            amount: mov.amount.toString(),
+            date: mov.date.split('T')[0]
+        });
+    };
+
+    const handleUpdate = async () => {
+        if (!editingTransfer || !formData.amount) return;
+        setSaving(true);
+        try {
+            await updateMovement(editingTransfer.id, {
+                amount: parseFloat(formData.amount),
+                date: formData.date
+            });
+            setEditingTransfer(null);
+            onRefresh();
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao atualizar transferência');
+        }
+        setSaving(false);
+    };
+
+    return (
+        <div className="space-y-4">
+            {/* Edit Form */}
+            {editingTransfer && (
+                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-blue-400">Editar Transferência</h3>
+                        <button
+                            onClick={() => setEditingTransfer(null)}
+                            className="p-1 text-neutral-400 hover:text-white"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <input
+                            type="number"
+                            placeholder="Valor"
+                            value={formData.amount}
+                            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                            className="bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
+                        />
+                        <input
+                            type="date"
+                            value={formData.date}
+                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                            className="bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setEditingTransfer(null)}
+                            className="flex-1 py-2.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleUpdate}
+                            disabled={saving || !formData.amount}
+                            className="flex-1 py-2.5 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-400 disabled:opacity-50"
+                        >
+                            {saving ? 'Salvando...' : 'Atualizar'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Empty State */}
+            {outTransfers.length === 0 && (
+                <div className="text-center py-12 text-neutral-500">
+                    <ArrowLeftRight className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>Nenhuma transferência neste mês</p>
+                    <p className="text-sm mt-1">Use a IA: "Transferi 500 da Carteira pro Itaú"</p>
+                </div>
+            )}
+
+            {/* Transfers List */}
+            {outTransfers.length > 0 && (
+                <div className="space-y-3">
+                    {outTransfers.map((mov) => {
+                        // Parse transfer description to get source and destination
+                        // Format: "Transferência → Conta Destino" (OUT) registered on source account
+                        const parts = mov.description?.split('→') || [];
+                        const prefix = parts[0]?.trim() || 'Transferência';
+                        const destination = parts[1]?.trim() || 'Destino';
+                        const source = mov.account_name || 'Origem';
+
+                        return (
+                            <div key={mov.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                                    <ArrowLeftRight className="w-5 h-5" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-medium text-white">
+                                        {source} → {destination}
+                                    </p>
+                                    <p className="text-xs text-neutral-500">
+                                        {new Date(mov.date).toLocaleDateString('pt-BR')}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="font-semibold text-blue-400">
+                                        R$ {mov.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => handleEdit(mov)}
+                                    className="p-2 text-neutral-500 hover:text-yellow-400 transition-colors"
+                                    title="Editar"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => onDelete(mov.id)}
+                                    className="p-2 text-neutral-500 hover:text-red-400 transition-colors"
+                                    title="Excluir"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>

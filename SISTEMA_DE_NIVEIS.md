@@ -156,141 +156,108 @@ A escolha depende do que for mais seguro programar.
 
 ---
 
-## 📋 Status de Implementação
+## 📋 Status de Implementação (Atualizado 13/01/2026)
 
-| Feature | Existe no código? | Nível |
-|---------|-------------------|-------|
-| Carteira | ✅ Sim (`accounts` com tipo "wallet") | 1 |
-| Transações | ✅ Sim (`movements` table) | 1 |
-| Categorias | ✅ Sim (`categories` table) | 1 |
-| Múltiplas contas | ✅ Sim (`accounts` - bank, savings) | 2 |
-| Transferências | ✅ Sim (type "transfer" em movements) | 2 |
-| Recorrências | ✅ Sim (`recurrences` table) | 2 |
-| Notificações | ✅ Sim (`notifications` table) | 2 |
-| Cartões de crédito | ✅ Sim (`credit_cards` table) | 3 |
-| Parcelamentos | ✅ Sim (installments em movements) | 3 |
-| Faturas | ✅ Sim (lógica em reports.ts) | 3 |
-| Empréstimos | ✅ Sim (`loans` table) | 3 |
-| Metas | ⚠️ Parcial (existe `reserves`) | 4 |
-| Previsão de meses | ❌ Não existe | 4 |
-| Simulações | ❌ Não existe | 4 |
+| Feature | Existe no código? | Nível | Status |
+|---------|-------------------|-------|--------|
+| Carteira | ✅ Sim (`accounts` com tipo "wallet") | 1 | ✅ Funcional |
+| Transações | ✅ Sim (`movements` table) | 1 | ✅ Funcional |
+| Categorias | ✅ Sim (`categories` table) | 1 | ✅ Funcional |
+| Múltiplas contas | ✅ Sim (`accounts` - bank, savings) | 2 | ✅ Funcional |
+| Transferências | ✅ Sim (type "transfer" em movements) | 2 | ✅ Funcional |
+| Recorrências | ✅ Sim (`recurrences` table) | 2 | ✅ Funcional + Edição |
+| Notificações | ✅ Sim (`notifications` table) | 2 | ✅ Funcional |
+| Cartões de crédito | ✅ Sim (`credit_cards` table) | 3 | ✅ Funcional |
+| Parcelamentos | ✅ Sim (installments em movements) | 3 | ✅ Funcional |
+| Faturas | ✅ Sim (lógica em reports.ts) | 3 | ✅ Funcional |
+| Empréstimos | ✅ Sim (`loans` table) | 3 | ⚠️ Parcial |
+| Metas | ⚠️ Parcial (existe `reserves`) | 4 | ⚠️ Parcial |
+| Previsão de meses | ❌ Não existe | 4 | ❌ Pendente |
+| Simulações | ⚠️ Parcial (intent SIMULATE_SCENARIO) | 4 | ⚠️ Básico |
 
 ---
 
 ## 🔴 O QUE FALTA IMPLEMENTAR
 
-### 1. **Banco de Dados**
-| Item | Descrição | Prioridade |
-|------|-----------|-----------|
-| Campo `user_level` | Adicionar à tabela `profiles` (INTEGER, default 0) | 🔴 Alta |
-| Campo `level_transaction_count` | Contador de transações para progressão | 🟡 Média |
-| Tipo `INITIAL_BALANCE` | Transação especial para saldo inicial do tutorial | 🔴 Alta |
-
-**SQL necessário:**
-```sql
-ALTER TABLE profiles 
-ADD COLUMN user_level INTEGER DEFAULT 0,
-ADD COLUMN level_transaction_count INTEGER DEFAULT 0;
-```
+### 1. **Banco de Dados** ✅ CONCLUÍDO
+| Item | Descrição | Status |
+|------|-----------|--------|
+| Campo `user_level` | Na tabela `profiles` | ✅ Implementado |
+| Campo `level_transaction_count` | Contador de transações | ✅ Implementado |
+| Tipo `INITIAL_BALANCE` | Flag `is_initial_balance` em movements | ✅ Implementado |
 
 ---
 
-### 2. **Componente Sidebar.tsx**
-| Item | Descrição | Prioridade |
-|------|-----------|-----------|
-| Prop `userLevel` | Receber nível do usuário | 🔴 Alta |
-| Lógica de lock | Mostrar/ocultar itens por nível | 🔴 Alta |
-| Ícone de cadeado 🔒 | Para itens bloqueados | 🟡 Média |
-| Indicador de progresso | Mostrar quantas transações faltam | 🟢 Baixa |
-
-**Estrutura sugerida:**
-```typescript
-const menuItems = [
-  { icon: Home, label: "Início (IA)", href: "/", minLevel: 0 },
-  { icon: PieChart, label: "Visão Geral", href: "/dashboard", minLevel: 1 },
-  { icon: DollarSign, label: "Financeiro", href: "/financial", minLevel: 1 },
-  { icon: Calendar, label: "Calendário", href: "/calendar", minLevel: 2 },
-  { icon: Wallet, label: "Contas e Cartões", href: "/assets", minLevel: 2 },
-  { icon: Target, label: "Planejamento", href: "/planning", minLevel: 4 },
-  { icon: BarChart3, label: "Relatórios", href: "/reports", minLevel: 1 },
-];
-```
+### 2. **Componente Sidebar.tsx** ✅ CONCLUÍDO
+| Item | Descrição | Status |
+|------|-----------|--------|
+| Lógica de lock por nível | Mostrar/ocultar itens por nível | ✅ Implementado |
+| Ícone de cadeado 🔒 | Para itens bloqueados | ✅ Implementado |
+| Badge de nível | Mostra "Lvl X" para itens bloqueados | ✅ Implementado |
 
 ---
 
-### 3. **Tutorial/Onboarding (Nível 0)**
-| Item | Descrição | Prioridade |
-|------|-----------|-----------|
-| Fluxo conversacional | IA guia usuário inicial | 🔴 Alta |
-| Detecção de novo usuário | Verificar se `user_level = 0` | 🔴 Alta |
-| Criação de carteira + saldo | Registrar `INITIAL_BALANCE` | 🔴 Alta |
-| Transição automática | Mudar para nível 1 após tutorial | 🔴 Alta |
-
-**Arquivos afetados:**
-- `src/app/page.tsx` (home/IA)
-- `src/app/hooks/useCommandCenterLogic.ts`
-- `src/app/actions/onboarding.ts`
+### 3. **Tutorial/Onboarding (Nível 0 → 1)** ✅ CONCLUÍDO
+| Item | Descrição | Status |
+|------|-----------|--------|
+| Fluxo conversacional | IA guia usuário inicial | ✅ Implementado |
+| Detecção de novo usuário | Verificar se `user_level = 0` | ✅ Implementado |
+| Criação de carteira + saldo | Registrar saldo inicial | ✅ Implementado |
+| Transição automática | Mudar para nível 1 após tutorial | ✅ Implementado |
+| Tutorial Nível 2 | Segundo tutorial para progressão | ✅ Implementado |
 
 ---
 
-### 4. **Lógica da IA (CommandCenter)**
-| Item | Descrição | Prioridade |
-|------|-----------|-----------|
-| Verificar nível do usuário | Antes de processar comandos | 🟡 Média |
-| System prompt dinâmico | Adaptar instruções por nível | 🟡 Média |
-| Incrementar contador | Ao registrar transação | 🔴 Alta |
-| Lógica de desbloqueio | Verificar se atingiu threshold | 🔴 Alta |
+### 4. **Lógica da IA (CommandCenter)** ✅ CONCLUÍDO
+| Item | Descrição | Status |
+|------|-----------|--------|
+| Verificar nível do usuário | Antes de processar comandos | ✅ Implementado |
+| Incrementar contador | Ao registrar transação | ✅ Implementado |
+| Lógica de desbloqueio | Verificar se atingiu threshold | ✅ Implementado |
+| Milestone de 10 ações | Notificação ao atingir | ✅ Implementado |
 
 ---
 
-### 5. **Relatórios (Reports)**
-| Item | Descrição | Prioridade |
-|------|-----------|-----------|
-| Gráficos com cadeado | Visual de bloqueio | 🟢 Baixa |
-| Tooltip explicativo | "Desbloqueie no nível X" | 🟢 Baixa |
+### 5. **Ações de Progressão** ✅ CONCLUÍDO
+| Item | Descrição | Status |
+|------|-----------|--------|
+| Função `getUserLevel()` | Buscar nível atual | ✅ Em `profile.ts` |
+| Função `updateUserLevel()` | Subir de nível | ✅ Em `profile.ts` |
+| Incrementar contador | `incrementActionCount()` | ✅ Em `profile.ts` |
 
 ---
 
-### 6. **Ações de Progressão**
-| Item | Descrição | Prioridade |
-|------|-----------|-----------|
-| Função `checkLevelUp()` | Verificar se pode subir de nível | 🔴 Alta |
-| Função `unlockLevel()` | Subir de nível + notificar usuário | 🔴 Alta |
-| Action `getUserLevel()` | Buscar nível atual | 🔴 Alta |
-| Action `updateUserLevel()` | Atualizar nível | 🔴 Alta |
+## 📦 RESUMO: STATUS ATUAL
 
----
+1. **Fase 1 - Base (Backend)** ✅ CONCLUÍDO
+   - [x] Campos no banco (`user_level`, `level_transaction_count`)
+   - [x] Actions para gerenciar nível
 
-## 📦 RESUMO: ORDEM DE IMPLEMENTAÇÃO SUGERIDA
+2. **Fase 2 - Tutorial** ✅ CONCLUÍDO
+   - [x] Fluxo de onboarding conversacional
+   - [x] Flag `is_initial_balance` em movements
+   - [x] Tutorial nível 1 e nível 2
 
-1. **Fase 1 - Base (Backend)**
-   - [ ] Adicionar campos no banco (`user_level`, `level_transaction_count`)
-   - [ ] Criar actions para gerenciar nível (`getUserLevel`, `updateUserLevel`)
-   
-2. **Fase 2 - Tutorial**
-   - [ ] Implementar fluxo de onboarding conversacional
-   - [ ] Criar tipo de transação `INITIAL_BALANCE`
-   - [ ] Transição automática nível 0 → 1
+3. **Fase 3 - UI Gating** ✅ CONCLUÍDO
+   - [x] Sidebar com lógica de níveis
+   - [x] Ícones de cadeado
+   - [x] Bloqueio por nível
 
-3. **Fase 3 - UI Gating**
-   - [ ] Modificar Sidebar com lógica de níveis
-   - [ ] Adicionar ícones de cadeado
-   - [ ] Bloquear rotas por nível
+4. **Fase 4 - Progressão** ✅ CONCLUÍDO
+   - [x] Incrementar contador a cada transação
+   - [x] Milestone de 10 ações para sugerir nível 2
 
-4. **Fase 4 - Progressão**
-   - [ ] Incrementar contador a cada transação
-   - [ ] Implementar `checkLevelUp()` automático
-   - [ ] Notificar usuário ao subir de nível
-
-5. **Fase 5 - Polish**
+5. **Fase 5 - Polish** ⚠️ PARCIAL
    - [ ] Relatórios com preview bloqueado
    - [ ] Indicadores de progresso no menu
-   - [ ] Adaptar IA por nível (opcional)
+   - [x] Adaptar IA por nível
 
 ---
 
 ## 📝 Notas
 
-- Este documento é uma **especificação conceitual**
-- A implementação técnica será feita posteriormente
-- Campos sugeridos no banco: `profiles.user_level` e `profiles.level_transaction_count`
+- Sistema de níveis está **funcional e em uso**
+- Usuários começam no nível 0 (tutorial) e progridem até 4
+- Sidebar exibe itens bloqueados com cadeado e badge de nível
+- IA recusa comandos de níveis superiores com mensagem amigável
+

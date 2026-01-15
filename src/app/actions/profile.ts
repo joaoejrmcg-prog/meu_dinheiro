@@ -290,8 +290,9 @@ export async function getActionCount(): Promise<number> {
 
 /**
  * Incrementa o contador de ações do nível
+ * Retorna objeto com newCount e hitMilestone (true quando atinge 10)
  */
-export async function incrementActionCount(): Promise<number> {
+export async function incrementActionCount(): Promise<{ newCount: number; hitMilestone: boolean }> {
     const cookieStore = await cookies();
 
     const supabase = createServerClient(
@@ -309,23 +310,35 @@ export async function incrementActionCount(): Promise<number> {
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return 0;
+    if (!user) return { newCount: 0, hitMilestone: false };
 
-    // 1. Get current count
+    // 1. Get current count and level
     const { data: profile } = await supabase
         .from('profiles')
-        .select('level_actions_count')
+        .select('level_actions_count, user_level')
         .eq('user_id', user.id)
         .single();
 
     const currentCount = profile?.level_actions_count || 0;
+    const userLevel = profile?.user_level || 1;
+
+    // If already at 10, don't increment or show milestone again
+    // User must level up to reset counter
+    if (currentCount >= 10) {
+        return { newCount: currentCount, hitMilestone: false };
+    }
+
     const newCount = currentCount + 1;
 
-    // 2. Update count
+    // 2. Check if hit milestone (10 actions) and not at max level
+    const MILESTONE_THRESHOLD = 10;
+    const hitMilestone = newCount === MILESTONE_THRESHOLD && userLevel < 4;
+
+    // 3. Update count (keep at 10 if hit milestone, user must level up to reset)
     await supabase
         .from('profiles')
         .update({ level_actions_count: newCount })
         .eq('user_id', user.id);
 
-    return newCount;
+    return { newCount, hitMilestone };
 }

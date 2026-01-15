@@ -26,7 +26,7 @@ async function getSupabase() {
 interface GetMovementsParams {
     month?: number;
     year?: number;
-    type?: 'income' | 'expense';
+    type?: 'income' | 'expense' | 'transfer';
 }
 
 export async function getMovements(params?: GetMovementsParams): Promise<Movement[]> {
@@ -36,9 +36,13 @@ export async function getMovements(params?: GetMovementsParams): Promise<Movemen
 
     let query = supabase
         .from('movements')
-        .select('*')
+        .select(`
+            *,
+            accounts:account_id (name)
+        `)
         .eq('user_id', user.id)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
 
     // Filter by month/year
     if (params?.month && params?.year) {
@@ -58,7 +62,12 @@ export async function getMovements(params?: GetMovementsParams): Promise<Movemen
         console.error("Error fetching movements:", error);
         return [];
     }
-    return data || [];
+
+    // Map the joined data to include account_name
+    return (data || []).map((m: any) => ({
+        ...m,
+        account_name: m.accounts?.name || null
+    }));
 }
 
 export async function getLastMovement(): Promise<Movement | null> {
@@ -107,22 +116,38 @@ export async function getAccountStatement(accountId: string, month?: number, yea
     const prevYear = targetMonth === 1 ? targetYear - 1 : targetYear;
     const prevEndDate = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0];
 
+    // Get account initial balance
+    const { data: account } = await supabase
+        .from('accounts')
+        .select('initial_balance')
+        .eq('id', accountId)
+        .single();
+
+    const initialBalance = Number(account?.initial_balance) || 0;
+
     // Get all movements for this account up to end of previous month (for previous balance)
     const { data: prevMovements } = await supabase
         .from('movements')
-        .select('amount, type')
+        .select('amount, type, description')
         .eq('user_id', user.id)
         .eq('account_id', accountId)
         .eq('is_paid', true)
         .lte('date', prevEndDate);
 
-    // Calculate previous balance from movements
-    let previousBalance = 0;
-    (prevMovements || []).forEach((m: { amount: number; type: string }) => {
+    // Calculate previous balance from initial + movements
+    let previousBalance = initialBalance;
+    (prevMovements || []).forEach((m: { amount: number; type: string; description?: string }) => {
         if (m.type === 'income') {
             previousBalance += m.amount;
-        } else {
+        } else if (m.type === 'expense') {
             previousBalance -= m.amount;
+        } else if (m.type === 'transfer') {
+            // Handle transfers: ← = incoming (add), → = outgoing (subtract)
+            if (m.description?.includes('←')) {
+                previousBalance += m.amount;
+            } else if (m.description?.includes('→')) {
+                previousBalance -= m.amount;
+            }
         }
     });
 
@@ -136,8 +161,12 @@ export async function getAccountStatement(accountId: string, month?: number, yea
         .lte('date', endDate)
         .order('date', { ascending: false });
 
-    const entries = (currentMovements || []).filter((m: Movement) => m.type === 'income');
-    const exits = (currentMovements || []).filter((m: Movement) => m.type === 'expense');
+    const entries = (currentMovements || []).filter((m: Movement) =>
+        m.type === 'income' || (m.type === 'transfer' && m.description?.includes('←'))
+    );
+    const exits = (currentMovements || []).filter((m: Movement) =>
+        m.type === 'expense' || (m.type === 'transfer' && m.description?.includes('→'))
+    );
 
     const totalEntries = entries.reduce((sum: number, m: Movement) => sum + m.amount, 0);
     const totalExits = exits.reduce((sum: number, m: Movement) => sum + m.amount, 0);
@@ -176,6 +205,7 @@ export async function updateMovement(id: string, params: {
     description?: string;
     amount?: number;
     date?: string;
+    due_date?: string;
     is_paid?: boolean;
     account_id?: string;
     category_id?: string;
@@ -200,6 +230,7 @@ export async function createMovementManual(params: {
     amount: number;
     type: 'income' | 'expense';
     date: string;
+    due_date?: string;
     is_paid?: boolean;
     account_id?: string;
     category_id?: string;
@@ -230,6 +261,7 @@ export async function createMovementManual(params: {
             amount: params.amount,
             type: params.type,
             date: params.date,
+            due_date: params.due_date || null,
             is_paid: params.is_paid ?? true,
             account_id: accountId || null,
             category_id: params.category_id || null,
@@ -272,6 +304,10 @@ export async function createTransfer(params: {
     }
 
     try {
+        // 0. Recalculate source account balance to ensure it's up-to-date
+        const { recalculateAccountBalance } = await import('./assets');
+        await recalculateAccountBalance(fromAccountId);
+
         // 1. Get account names for better descriptions
         const { data: fromAccount } = await supabase
             .from('accounts')
@@ -419,6 +455,76 @@ export async function deleteRecurrence(id: string) {
     return { success: true };
 }
 
+export async function updateRecurrence(id: string, params: {
+    description?: string;
+    amount?: number;
+    type?: 'income' | 'expense';
+    frequency?: 'monthly' | 'weekly' | 'yearly';
+    next_due_date?: string;
+    account_id?: string;
+    category_id?: string;
+    card_id?: string;
+}) {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { error } = await supabase
+        .from('recurrences')
+        .update(params)
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+    if (error) throw error;
+    return { success: true };
+}
+
+/**
+ * Find a recurrence by description (partial match, case-insensitive)
+ */
+export async function findRecurrenceByDescription(searchTerm: string): Promise<{
+    success: boolean;
+    recurrence?: any;
+    error?: string;
+    multipleMatches?: any[];
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    const { data: recurrences, error } = await supabase
+        .from('recurrences')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('active', true);
+
+    if (error) return { success: false, error: error.message };
+    if (!recurrences || recurrences.length === 0) {
+        return { success: false, error: "Você não tem nenhuma conta recorrente cadastrada." };
+    }
+
+    // Search for matching recurrences (case-insensitive, partial match)
+    const searchLower = searchTerm.toLowerCase();
+    const matches = recurrences.filter(rec =>
+        rec.description.toLowerCase().includes(searchLower)
+    );
+
+    if (matches.length === 0) {
+        return { success: false, error: `Não encontrei nenhuma recorrência com "${searchTerm}".` };
+    }
+
+    if (matches.length === 1) {
+        return { success: true, recurrence: matches[0] };
+    }
+
+    // Multiple matches - return them for user to choose
+    return {
+        success: false,
+        error: `Encontrei ${matches.length} recorrências com "${searchTerm}". Seja mais específico.`,
+        multipleMatches: matches
+    };
+}
+
 // ============ SUMMARY ============
 
 export async function getMonthSummary(month: number, year: number, status: 'paid' | 'pending' | 'all' = 'all') {
@@ -544,26 +650,46 @@ export async function getCashFlowChartData(month: number, year: number) {
     const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
     const endDate = new Date(year, month, 0).toISOString().split('T')[0];
 
-    // Get initial balances from accounts
+    // Get current balances from accounts (already reflects all paid movements)
     const { data: accounts } = await supabase
         .from('accounts')
-        .select('initial_balance')
+        .select('balance')
         .eq('user_id', user.id);
 
-    let startBalance = accounts?.reduce((sum, acc) => sum + (acc.initial_balance || 0), 0) || 0;
+    // Current total balance across all accounts
+    const currentTotalBalance = accounts?.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0) || 0;
 
-    // Add all paid movements before start date
-    const { data: prevMovements } = await supabase
+    // Get paid movements for THIS month to calculate backwards to start of month
+    const { data: thisMonthPaidMovements } = await supabase
         .from('movements')
-        .select('amount, type')
+        .select('amount, type, date, is_loan, is_reserve, is_reimbursement')
         .eq('user_id', user.id)
         .eq('is_paid', true)
-        .lt('date', startDate);
+        .gte('date', startDate)
+        .lte('date', endDate);
 
-    (prevMovements || []).forEach((m: any) => {
-        if (m.type === 'income') startBalance += m.amount;
-        else startBalance -= m.amount;
+    // Calculate: startBalance = currentBalance - (all paid REAL movements in this month from day 1 to today)
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Sum of all paid movements from start of month until today (inclusive)
+    // EXCLUDE loans, reserves, reimbursements to match the chart display
+    let monthMovementsUpToToday = 0;
+    (thisMonthPaidMovements || []).forEach((m: any) => {
+        // Skip special movement types (same logic as chart)
+        if (m.is_loan || m.is_reserve || m.is_reimbursement) return;
+
+        if (m.date <= todayStr) {
+            if (m.type === 'income') monthMovementsUpToToday += Number(m.amount);
+            else if (m.type === 'expense') monthMovementsUpToToday -= Number(m.amount);
+            // transfers are ignored - they move money between accounts but don't affect total balance
+        }
     });
+
+    // Start of month balance = current balance - movements done this month
+    const startBalance = currentTotalBalance - monthMovementsUpToToday;
+
+    console.log('CHART DEBUG:', { currentTotalBalance, monthMovementsUpToToday, startBalance });
 
     // 2. Get movements for the month
     // A. Realized (Paid) -> Filter by 'date'
@@ -586,73 +712,110 @@ export async function getCashFlowChartData(month: number, year: number) {
 
     // 3. Build daily data
     const daysInMonth = new Date(year, month, 0).getDate();
-    const chartData = [];
-    let currentRealizedBalance = startBalance;
-    let currentForecastBalance = startBalance;
+    const chartData: any[] = [];
 
-    // Accumulators
+    const todayDay = today.getDate();
+    const isCurrentMonth = today.getMonth() + 1 === month && today.getFullYear() === year;
+
+    // For past days: only realized (paid) movements
+    let runningRealizedBalance = startBalance;
     let accumulatedRealizedIncome = 0;
     let accumulatedRealizedExpense = 0;
-    let accumulatedForecastIncome = 0;
-    let accumulatedForecastExpense = 0;
-
-    const today = new Date();
-    const isFuture = (day: number) => {
-        const d = new Date(year, month - 1, day);
-        return d > today;
-    };
 
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = new Date(year, month - 1, day).toISOString().split('T')[0];
+        const isFutureDay = isCurrentMonth ? day > todayDay :
+            (year > today.getFullYear() || (year === today.getFullYear() && month > today.getMonth() + 1));
 
-        // Realized: Paid on this date
-        const dayRealizedMoves = (realizedMovements || []).filter((m: any) => m.date === dateStr);
-
-        // Forecast: Paid on this date OR Pending due on this date
-        const dayPendingMoves = (pendingMovements || []).filter((m: any) => {
-            const targetDate = m.due_date ? m.due_date.split('T')[0] : m.date;
-            return targetDate === dateStr;
+        // Realized: Paid on this date (normalize date comparison)
+        const dayRealizedMoves = (realizedMovements || []).filter((m: any) => {
+            const moveDate = m.date?.split('T')[0]; // Handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm:ss'
+            return moveDate === dateStr;
         });
-
-        const dayAllForecastMoves = [...dayRealizedMoves, ...dayPendingMoves];
 
         let dayRealizedIncome = 0;
         let dayRealizedExpense = 0;
-        let dayForecastIncome = 0;
-        let dayForecastExpense = 0;
 
-        // Calculate Realized
+        // Calculate Realized (EXCLUDE loans, reserves, reimbursements, and transfers)
         dayRealizedMoves.forEach((m: any) => {
-            if (m.type === 'income') dayRealizedIncome += m.amount;
-            else dayRealizedExpense += m.amount;
+            // Skip special movement types
+            if (m.is_loan || m.is_reserve || m.is_reimbursement) return;
+
+            if (m.type === 'income') dayRealizedIncome += Number(m.amount);
+            else if (m.type === 'expense') dayRealizedExpense += Number(m.amount);
+            // transfers (type='transfer') are intentionally ignored for income/expense tracking
         });
 
-        // Calculate Forecast
-        dayAllForecastMoves.forEach((m: any) => {
-            if (m.type === 'income') dayForecastIncome += m.amount;
-            else dayForecastExpense += m.amount;
-        });
-
-        currentRealizedBalance += (dayRealizedIncome - dayRealizedExpense);
-        currentForecastBalance += (dayForecastIncome - dayForecastExpense);
-
+        runningRealizedBalance += (dayRealizedIncome - dayRealizedExpense);
         accumulatedRealizedIncome += dayRealizedIncome;
         accumulatedRealizedExpense += dayRealizedExpense;
-        accumulatedForecastIncome += dayForecastIncome;
-        accumulatedForecastExpense += dayForecastExpense;
 
         chartData.push({
             day,
-            realizedBalance: currentRealizedBalance,
-            forecastBalance: currentForecastBalance,
-
-            accumulatedRealizedIncome,
-            accumulatedRealizedExpense,
-            accumulatedForecastIncome,
-            accumulatedForecastExpense,
-
-            isFuture: isFuture(day)
+            // Only show realized balance for past/today, null for future
+            realizedBalance: !isFutureDay ? runningRealizedBalance : null,
+            accumulatedRealizedIncome: !isFutureDay ? accumulatedRealizedIncome : null,
+            accumulatedRealizedExpense: !isFutureDay ? accumulatedRealizedExpense : null,
+            forecastBalance: null,
+            accumulatedForecastIncome: null,
+            accumulatedForecastExpense: null,
+            isFuture: isFutureDay
         });
+    }
+
+    // DEBUG: Check totals
+    console.log('CHART REALIZED TOTALS:', { accumulatedRealizedIncome, accumulatedRealizedExpense, runningRealizedBalance });
+    console.log('REALIZED MOVEMENTS COUNT:', realizedMovements?.length);
+
+    // 4. Calculate forecast: starts from today's realized balance and adds pending
+    const lastRealizedData = [...chartData].reverse().find(d => d.realizedBalance !== null);
+    const forecastStartBalance = lastRealizedData?.realizedBalance ?? startBalance;
+    const forecastStartIncome = lastRealizedData?.accumulatedRealizedIncome ?? 0;
+    const forecastStartExpense = lastRealizedData?.accumulatedRealizedExpense ?? 0;
+
+    let runningForecastBalance = forecastStartBalance;
+    let accumulatedForecastIncome = forecastStartIncome;
+    let accumulatedForecastExpense = forecastStartExpense;
+
+    for (let i = 0; i < chartData.length; i++) {
+        const day = chartData[i].day;
+        const dateStr = new Date(year, month - 1, day).toISOString().split('T')[0];
+
+        // Only calculate forecast for today and future days
+        if (chartData[i].isFuture || (isCurrentMonth && day === todayDay)) {
+            // Add pending movements due on this date
+            const dayPendingMoves = (pendingMovements || []).filter((m: any) => {
+                const targetDate = m.due_date ? m.due_date.split('T')[0] : m.date;
+                return targetDate === dateStr;
+            });
+
+            let dayForecastIncome = 0;
+            let dayForecastExpense = 0;
+
+            // EXCLUDE loans, reserves, reimbursements, and transfers
+            dayPendingMoves.forEach((m: any) => {
+                if (m.is_loan || m.is_reserve || m.is_reimbursement) return;
+
+                if (m.type === 'income') dayForecastIncome += Number(m.amount);
+                else if (m.type === 'expense') dayForecastExpense += Number(m.amount);
+            });
+
+            runningForecastBalance += (dayForecastIncome - dayForecastExpense);
+            accumulatedForecastIncome += dayForecastIncome;
+            accumulatedForecastExpense += dayForecastExpense;
+
+            // Update chart data with forecast
+            chartData[i].forecastBalance = runningForecastBalance;
+            chartData[i].accumulatedForecastIncome = accumulatedForecastIncome;
+            chartData[i].accumulatedForecastExpense = accumulatedForecastExpense;
+
+            // For today, set forecast equal to realized to start the projection
+            if (isCurrentMonth && day === todayDay) {
+                chartData[i].forecastBalance = chartData[i].realizedBalance;
+                chartData[i].accumulatedForecastIncome = chartData[i].accumulatedRealizedIncome;
+                chartData[i].accumulatedForecastExpense = chartData[i].accumulatedRealizedExpense;
+            }
+        }
     }
 
     return chartData;
@@ -683,15 +846,15 @@ export async function getCalendarMovements(month: number, year: number): Promise
 
     const startDate = formatDate(new Date(year, month - 1, 1));
     const endDate = formatDate(new Date(year, month, 0));
+    const daysInMonth = new Date(year, month, 0).getDate();
 
-    // For calendar view: use due_date to show when payments are due
-    // Only get movements that have a due_date and are not paid
-    const { data, error } = await supabase
+    // 1. Get pending movements with due_date
+    const { data: movements, error } = await supabase
         .from('movements')
         .select('*')
         .eq('user_id', user.id)
-        .eq('is_paid', false) // Only pending movements
-        .not('due_date', 'is', null) // Only movements with due_date
+        .eq('is_paid', false)
+        .not('due_date', 'is', null)
         .gte('due_date', startDate)
         .lte('due_date', endDate)
         .order('due_date', { ascending: true });
@@ -701,11 +864,18 @@ export async function getCalendarMovements(month: number, year: number): Promise
         return [];
     }
 
-    // Group by due_date (not date)
+    // 2. Get active recurrences
+    const { data: recurrences } = await supabase
+        .from('recurrences')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('active', true);
+
+    // Group by date
     const dateMap = new Map<string, CalendarDay>();
 
-    (data || []).forEach((mov: Movement) => {
-        // Use due_date for grouping
+    // Add movements
+    (movements || []).forEach((mov: Movement) => {
         const dateKey = mov.due_date ? mov.due_date.split('T')[0] : mov.date.split('T')[0];
 
         if (!dateMap.has(dateKey)) {
@@ -728,6 +898,73 @@ export async function getCalendarMovements(month: number, year: number): Promise
         } else if (mov.type === 'expense') {
             day.hasExpense = true;
             day.expenseTotal += mov.amount;
+        }
+    });
+
+    // 3. Add recurrences as virtual movements for this month
+    (recurrences || []).forEach((rec: any) => {
+        // Parse the next_due_date to get the day (this is the FIRST occurrence date)
+        const nextDueDate = new Date(rec.next_due_date + 'T12:00:00');
+        const recDay = nextDueDate.getDate();
+
+        // Check if this day exists in the month
+        if (recDay <= daysInMonth) {
+            // Calculate the target date for this viewing month
+            const targetDate = new Date(year, month - 1, recDay, 12, 0, 0);
+
+            // Don't show recurrence in months before its first occurrence
+            // (e.g., recurrence created Jan 30 with due_day 5 shouldn't show Jan 5)
+            if (targetDate < nextDueDate) {
+                return; // Skip - this month is before the recurrence started
+            }
+
+            const dateKey = formatDate(new Date(year, month - 1, recDay));
+
+            // Skip if we already have a movement for this recurrence on this day
+            // (to avoid duplicates when a movement was already generated)
+            const existingDay = dateMap.get(dateKey);
+            if (existingDay) {
+                const alreadyExists = existingDay.movements.some(
+                    m => m.description.toLowerCase() === rec.description.toLowerCase()
+                );
+                if (alreadyExists) return;
+            }
+
+            if (!dateMap.has(dateKey)) {
+                dateMap.set(dateKey, {
+                    date: dateKey,
+                    hasIncome: false,
+                    hasExpense: false,
+                    incomeTotal: 0,
+                    expenseTotal: 0,
+                    movements: []
+                });
+            }
+
+            const day = dateMap.get(dateKey)!;
+
+            // Create a virtual movement from recurrence
+            const virtualMovement: any = {
+                id: `rec-${rec.id}`,
+                description: `🔄 ${rec.description}`,
+                amount: rec.amount || 0,
+                type: rec.type,
+                date: dateKey,
+                due_date: dateKey,
+                is_paid: false,
+                is_recurrence: true,
+                recurrence_id: rec.id
+            };
+
+            day.movements.push(virtualMovement);
+
+            if (rec.type === 'income') {
+                day.hasIncome = true;
+                day.incomeTotal += rec.amount || 0;
+            } else if (rec.type === 'expense') {
+                day.hasExpense = true;
+                day.expenseTotal += rec.amount || 0;
+            }
         }
     });
 

@@ -124,9 +124,11 @@ export async function getMonthReport(month: number, year: number): Promise<Month
     movements.forEach((m: any) => {
         const amount = Number(m.amount) || 0;
 
-        // Cash flow (all movements)
-        if (m.type === 'income') cashIn += amount;
-        if (m.type === 'expense') cashOut += amount;
+        // Cash flow (ONLY paid movements affect actual cash)
+        if (m.is_paid !== false) { // Default to true if undefined
+            if (m.type === 'income') cashIn += amount;
+            if (m.type === 'expense') cashOut += amount;
+        }
 
         // Loans
         if (m.is_loan) {
@@ -145,8 +147,8 @@ export async function getMonthReport(month: number, year: number): Promise<Month
             reimbursements += amount;
         }
 
-        // Real income/expense (excluding loans, reserves, reimbursements)
-        if (!m.is_loan && !m.is_reserve && !m.is_reimbursement) {
+        // Real income/expense (excluding loans, reserves, reimbursements, ONLY paid)
+        if (!m.is_loan && !m.is_reserve && !m.is_reimbursement && m.is_paid !== false) {
             if (m.type === 'income') realIncome += amount;
             if (m.type === 'expense') realExpense += amount;
         }
@@ -184,6 +186,107 @@ export async function getYearSummary(year: number) {
         });
     }
     return months;
+}
+
+// ============ PENDING MOVEMENTS (Contas a Pagar/Receber) ============
+
+export interface PendingMovement {
+    id: string;
+    description: string;
+    amount: number;
+    due_date: string;
+    type: 'income' | 'expense';
+    category?: string;
+}
+
+export interface PendingSummary {
+    total: number;
+    count: number;
+    movements: PendingMovement[];
+}
+
+/**
+ * Get pending expenses (contas a pagar) for a specific month
+ */
+export async function getPendingExpenses(month: number, year: number): Promise<PendingSummary> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { total: 0, count: 0, movements: [] };
+
+    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+    const { data: movements, error } = await supabase
+        .from('movements')
+        .select('id, description, amount, due_date, type, categories(name)')
+        .eq('user_id', user.id)
+        .eq('type', 'expense')
+        .eq('is_paid', false)
+        .gte('due_date', startDate)
+        .lte('due_date', endDate)
+        .order('due_date', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching pending expenses:', error);
+        return { total: 0, count: 0, movements: [] };
+    }
+
+    const mapped = (movements || []).map((m: any) => ({
+        id: m.id,
+        description: m.description,
+        amount: m.amount,
+        due_date: m.due_date,
+        type: m.type,
+        category: m.categories?.name
+    }));
+
+    return {
+        total: mapped.reduce((sum, m) => sum + m.amount, 0),
+        count: mapped.length,
+        movements: mapped
+    };
+}
+
+/**
+ * Get pending incomes (contas a receber) for a specific month
+ */
+export async function getPendingIncomes(month: number, year: number): Promise<PendingSummary> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { total: 0, count: 0, movements: [] };
+
+    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+    const { data: movements, error } = await supabase
+        .from('movements')
+        .select('id, description, amount, due_date, type, categories(name)')
+        .eq('user_id', user.id)
+        .eq('type', 'income')
+        .eq('is_paid', false)
+        .gte('due_date', startDate)
+        .lte('due_date', endDate)
+        .order('due_date', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching pending incomes:', error);
+        return { total: 0, count: 0, movements: [] };
+    }
+
+    const mapped = (movements || []).map((m: any) => ({
+        id: m.id,
+        description: m.description,
+        amount: m.amount,
+        due_date: m.due_date,
+        type: m.type,
+        category: m.categories?.name
+    }));
+
+    return {
+        total: mapped.reduce((sum, m) => sum + m.amount, 0),
+        count: mapped.length,
+        movements: mapped
+    };
 }
 
 export interface InvoicePreview {

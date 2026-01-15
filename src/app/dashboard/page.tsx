@@ -66,30 +66,21 @@ export default function DashboardPage() {
         setUserLevel(level);
         setPendingSummary(pendingData);
 
-        // Process flow data for charts (split solid/dotted lines)
+        // Process flow data for charts (use data directly from backend which now handles the split)
         const processedFlowData = (flowData || []).map((d: any) => ({
             ...d,
-            // Balance
-            balanceSolid: !d.isFuture ? d.realizedBalance : null,
-            balanceDotted: d.isFuture || (d.day === new Date().getDate() && month === new Date().getMonth() + 1) ? d.forecastBalance : null,
+            // Balance - realizedBalance for past, forecastBalance for future
+            balanceSolid: d.realizedBalance,
+            balanceDotted: d.forecastBalance,
 
             // Income (Accumulated)
-            incomeSolid: !d.isFuture ? d.accumulatedRealizedIncome : null,
-            incomeDotted: d.isFuture || (d.day === new Date().getDate() && month === new Date().getMonth() + 1) ? d.accumulatedForecastIncome : null,
+            incomeSolid: d.accumulatedRealizedIncome,
+            incomeDotted: d.accumulatedForecastIncome,
 
             // Expense (Accumulated)
-            expenseSolid: !d.isFuture ? d.accumulatedRealizedExpense : null,
-            expenseDotted: d.isFuture || (d.day === new Date().getDate() && month === new Date().getMonth() + 1) ? d.accumulatedForecastExpense : null,
+            expenseSolid: d.accumulatedRealizedExpense,
+            expenseDotted: d.accumulatedForecastExpense,
         }));
-
-        // Fix continuity: find the last non-future point and ensure the dotted line starts there
-        const lastRealizedIndex = processedFlowData.findIndex((d: any) => d.isFuture) - 1;
-        if (lastRealizedIndex >= 0 && lastRealizedIndex < processedFlowData.length - 1) {
-            // Connect the lines
-            processedFlowData[lastRealizedIndex].balanceDotted = processedFlowData[lastRealizedIndex].realizedBalance;
-            processedFlowData[lastRealizedIndex].incomeDotted = processedFlowData[lastRealizedIndex].accumulatedRealizedIncome;
-            processedFlowData[lastRealizedIndex].expenseDotted = processedFlowData[lastRealizedIndex].accumulatedRealizedExpense;
-        }
 
         setCashFlowData(processedFlowData);
         setLoading(false);
@@ -436,28 +427,32 @@ export default function DashboardPage() {
                                     contentStyle={{ backgroundColor: '#171717', borderColor: '#262626', borderRadius: '8px' }}
                                     itemStyle={{ color: '#e5e5e5' }}
                                     labelStyle={{ color: '#a3a3a3' }}
-                                    formatter={(value: number, name: string) => {
-                                        const val = `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-                                        if (name.includes('Saldo')) return [val, 'Saldo'];
-                                        if (name.includes('Receita')) return [val, 'Receita Acumulada'];
-                                        if (name.includes('Despesa')) return [val, 'Despesa Acumulada'];
-                                        return [val, name];
+                                    formatter={(value: any, name: string) => {
+                                        if (value === null || value === undefined) return null;
+                                        const val = `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                                        // Remove "(Real)" and "(Prev)" suffixes for cleaner display
+                                        const cleanName = name.replace(' (Real)', '').replace(' (Prev)', '');
+                                        return [val, cleanName];
                                     }}
+                                    // Filter out null values
+                                    filterNull={true}
                                 />
                                 <ReferenceLine y={0} stroke="#444" />
-                                <Legend />
+                                <Legend
+                                    formatter={(value) => value.replace(' (Real)', '').replace(' (Prev)', '')}
+                                />
 
-                                {/* INCOME (Green) */}
-                                <Line type="monotone" dataKey="incomeSolid" stroke="#22c55e" strokeWidth={2} dot={false} name="Receita (Real)" connectNulls={true} />
-                                <Line type="monotone" dataKey="incomeDotted" stroke="#22c55e" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Receita (Prev)" connectNulls={true} />
+                                {/* SALDO (Blue) - Combined line */}
+                                <Line type="monotone" dataKey="balanceSolid" stroke="#3b82f6" strokeWidth={3} dot={false} name="Saldo" connectNulls={false} />
+                                <Line type="monotone" dataKey="balanceDotted" stroke="#3b82f6" strokeWidth={3} strokeDasharray="5 5" dot={false} name="Saldo (Prev)" legendType="none" connectNulls={false} />
 
-                                {/* EXPENSE (Red) */}
-                                <Line type="monotone" dataKey="expenseSolid" stroke="#ef4444" strokeWidth={2} dot={false} name="Despesa (Real)" connectNulls={true} />
-                                <Line type="monotone" dataKey="expenseDotted" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Despesa (Prev)" connectNulls={true} />
+                                {/* RECEITA (Green) */}
+                                <Line type="monotone" dataKey="incomeSolid" stroke="#22c55e" strokeWidth={2} dot={false} name="Receita Acumulada" connectNulls={false} />
+                                <Line type="monotone" dataKey="incomeDotted" stroke="#22c55e" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Receita (Prev)" legendType="none" connectNulls={false} />
 
-                                {/* BALANCE (Blue) */}
-                                <Line type="monotone" dataKey="balanceSolid" stroke="#3b82f6" strokeWidth={3} dot={false} name="Saldo (Real)" connectNulls={true} />
-                                <Line type="monotone" dataKey="balanceDotted" stroke="#3b82f6" strokeWidth={3} strokeDasharray="5 5" dot={false} name="Saldo (Prev)" connectNulls={true} />
+                                {/* DESPESA (Red) */}
+                                <Line type="monotone" dataKey="expenseSolid" stroke="#ef4444" strokeWidth={2} dot={false} name="Despesa Acumulada" connectNulls={false} />
+                                <Line type="monotone" dataKey="expenseDotted" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Despesa (Prev)" legendType="none" connectNulls={false} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -532,7 +527,15 @@ export default function DashboardPage() {
                                     </div>
                                     <div>
                                         <p className="text-sm text-neutral-300">{mov.description}</p>
-                                        <p className="text-xs text-neutral-600">{new Date(mov.date).toLocaleDateString('pt-BR')}</p>
+                                        <p className="text-xs text-neutral-600">
+                                            {new Date(mov.date).toLocaleDateString('pt-BR')}
+                                            {!mov.is_paid && mov.due_date && (
+                                                <span className="ml-2 text-orange-400">
+                                                    📅 vence {new Date(mov.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                </span>
+                                            )}
+                                            {!mov.is_paid && <span className="ml-2 px-1.5 py-0.5 bg-orange-500/20 text-orange-400 rounded text-[10px]">Pendente</span>}
+                                        </p>
                                     </div>
                                 </div>
                                 <span className={cn("font-medium text-sm", mov.type === 'expense' ? "text-red-400" : "text-green-400")}>

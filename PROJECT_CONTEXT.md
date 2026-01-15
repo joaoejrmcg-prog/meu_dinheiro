@@ -1,96 +1,132 @@
 # PROJETO: SaaS Gestor Financeiro Pessoal via IA (AI-First)
 
+> **Última Atualização:** 13/01/2026
+
 > [!IMPORTANT]
-> **STATUS DO CÓDIGO (LEGADO VS NOVO):**
-> Este repositório contém muito código legado de um projeto anterior.
-> - **A ÚNICA VERDADE** é este arquivo (`PROJECT_CONTEXT.md`).
-> - **Banco de Dados:** O único arquivo SQL válido e implementado é `finance_schema.sql`. O restante deve ser ignorado ou migrado.
-> - **Funcionalidades Ativas:** Apenas o menu "Perfil", "Indicar Amigos" e o layout da tela de IA foram atualizados.
-> - **Todo o resto** (tabelas antigas, componentes não listados acima) é código morto ou pendente de refatoração.
-> **NÃO ASSUMA** que o código existente funciona ou segue as regras atuais sem verificar este arquivo.
+> **CÓDIGO LEGADO:** Este repositório contém código herdado de outro projeto.
+> - **A ÚNICA VERDADE** são os arquivos de contexto: `CONTEXTO_SESSAO.md`, `PROJECT_CONTEXT.md`, `RULES.md`
+> - **NÃO ASSUMA** que código existente funciona sem verificar estes arquivos.
+
+---
 
 ## 🎯 OBJETIVO DO PROJETO
+
 Criar uma aplicação SaaS B2C para gestão financeira pessoal.
-A interface principal é um **Chat via IA** que atua como um assistente financeiro pessoal. O sistema ajuda o usuário a cadastrar cartões, lançar gastos, controlar contas a pagar/receber e visualizar insights financeiros.
+A interface principal é um **Chat via IA** que atua como um assistente financeiro pessoal.
 
 ---
 
-## 🛠️ TECH STACK (IMUTÁVEL)
-- **Frontend:** Next.js (Foco em PWA/Mobile).
-- **Voz (Input):** Web Speech API (Nativa do navegador) - **CUSTO ZERO**.
-- **Backend/DB:** Supabase (Postgres, Auth, RLS, Edge Functions).
-- **Pagamentos (SaaS):** Integração Asaas (Pix/Assinatura) para cobrar o usuário pelo uso do software.
-- **AI Core:** Integração LLM (OpenAI/Gemini) para processamento de gastos, categorização e insights.
+## 🛠️ TECH STACK
+
+| Tecnologia | Uso |
+|------------|-----|
+| **Next.js 16** | Frontend (PWA/Mobile) |
+| **Supabase** | Backend, Auth, Database (Postgres), RLS |
+| **Gemini AI** | Processamento de linguagem natural |
+| **OpenAI TTS** | Geração de áudio para respostas |
+| **Web Speech API** | Input de voz (custo zero) |
+| **Asaas** | Pagamentos (Pix/Assinatura) |
 
 ---
 
-## 🧠 FILOSOFIA DE DESENVOLVIMENTO
-1.  **Backend Manda, Frontend Obedece:** Regras de negócio ficam no banco (RLS) ou Edge Functions.
-2.  **Simplicidade Radical:** O usuário não quer preencher formulários complexos. Ele quer falar "Gastei 50 reais no Uber" e pronto.
-3.  **Privacidade Absoluta:** Multi-tenancy rigoroso. Dados financeiros são sensíveis.
-4.  **Automação Inteligente:** A IA deve categorizar gastos automaticamente e identificar recorrências (Netflix, Academia).
+## 📁 ESTRUTURA PRINCIPAL
+
+```
+src/app/
+├── actions/           # Server Actions (Backend)
+│   ├── ai.ts          # Processamento IA (intents, handlers)
+│   ├── finance-core.ts # Movimentações, saldos
+│   ├── financial.ts   # CRUD movements, recurrences
+│   ├── assets.ts      # Contas, cartões, recalculateBalances
+│   ├── categories.ts  # Categorias
+│   ├── reminders.ts   # Notificações de pagamento
+│   └── profile.ts     # Perfil, níveis de usuário
+├── components/
+│   ├── CommandCenter.tsx  # Chat principal com IA
+│   └── ...
+├── hooks/
+│   └── useCommandCenterLogic.ts # Lógica do chat
+├── dashboard/         # Dashboard principal
+├── financial/         # Tela Financeiro (Gastos/Receitas/Recorrentes)
+├── calendar/          # Calendário financeiro
+└── ...
+```
 
 ---
 
-## 📱 FRONTEND & UX RULES
-1.  **Chat-First:** A home é o chat. O usuário interage falando ou digitando.
-2.  **Dashboard Visual:** Gráficos de gastos por categoria, evolução mensal e faturas de cartão.
-3.  **Agenda Financeira:** Visualização de calendário para contas a pagar e receber.
+## 🗄️ TABELAS DO BANCO (Supabase)
+
+### Tabelas Core
+| Tabela | Descrição |
+|--------|-----------|
+| `profiles` | Dados do usuário, `user_level` (1-4), configurações |
+| `subscriptions` | Controle de assinatura SaaS |
+| `accounts` | Contas bancárias/carteiras (`balance`, `initial_balance`, `type`) |
+| `credit_cards` | Cartões de crédito (`closing_day`, `due_day`) |
+| `categories` | Categorias de gastos/receitas |
+| `movements` | Todas as movimentações financeiras |
+| `recurrences` | Contas fixas recorrentes |
+| `notifications` | Sistema de notificações do usuário |
+
+### Campos Importantes em `movements`
+- `is_paid` - Se já foi pago/recebido
+- `due_date` - Data de vencimento (para contas a pagar)
+- `is_loan`, `is_reserve`, `is_reimbursement` - Flags especiais
+- `is_initial_balance` - Marca saldo inicial
 
 ---
 
-## 🔒 REGRAS DE BANCO DE DADOS & SEGURANÇA (CRÍTICO)
-1.  **Multi-Tenancy:**
-    - TODAS as tabelas de dados (`transactions`, `payment_methods`, `categories`) DEVEM ter `user_id`.
-    - RLS Obrigatório.
-2.  **Tabelas Core (Mantidas):**
-    - `profiles`: Dados cadastrais.
-    - `subscriptions`: Controle da assinatura do SaaS (Asaas).
-    - `referral_rewards`: Sistema de indicação.
-3.  **Novas Tabelas de Domínio:**
-    - `payment_methods`: Cartões de Crédito, Contas Bancárias, Vale Refeição.
-    - `transactions`: Receitas e Despesas. Colunas: `amount`, `description`, `date`, `category_id`, `payment_method_id`, `installments` (parcelas).
-    - `categories`: Alimentação, Transporte, Lazer (Sugeridas pela IA, editáveis).
-    - `recurrences`: Contas fixas (Aluguel, Streaming).
+## 🤖 INTENTS DA IA (ai.ts)
+
+| Intent | Descrição |
+|--------|-----------|
+| `REGISTER_MOVEMENT` | Registrar gasto/receita |
+| `GET_FINANCIAL_STATUS` | Consultar saldo atual |
+| `DELETE_LAST_MOVEMENT` | Apagar último lançamento |
+| `CORRECT_LAST_ACCOUNT` | Corrigir conta do último lançamento |
+| `RECONCILE_PAYMENT` | Marcar conta pendente como paga |
+| `UPDATE_PENDING_AMOUNT` | Atualizar valor de conta pendente |
+| `CREATE_RECURRENCE` | Criar conta recorrente |
+| `ADJUST_BALANCE` | Corrigir saldo inicial da carteira |
+| `SET_DEFAULT_ACCOUNT` | Definir conta padrão |
+| `SIMULATE_SCENARIO` | Simulações "e se" |
+| `CANCEL_ACTION` | Cancelar ação atual |
 
 ---
 
-## 🤖 COMPORTAMENTO DA IA (SYSTEM PROMPT RULES)
-**Persona:** Assistente Financeiro Pessoal (Organizado, Proativo, Analítico).
-1.  **Registro de Gastos:**
-    - Input: "Comprei um tênis de 300 reais em 3x no Nubank".
-    - Ação: Identificar valor (300), parcelas (3), método (Nubank), categoria (Vestuário - inferida).
-    - Confirmação: "Lançar R$ 300,00 (3x R$ 100,00) no Nubank como Vestuário?"
-2.  **Consultas e Insights:**
-    - Input: "Quanto gastei com Uber esse mês?"
-    - Ação: Query no banco filtrando categoria/descrição e somar.
-3.  **Gestão de Cartões:**
-    - Alertar sobre fechamento de fatura ou limite (se disponível).
+## 📊 SISTEMA DE NÍVEIS
+
+| Nível | Nome | Funcionalidades |
+|-------|------|-----------------|
+| 1 | Carteira | Básico: gastos, receitas, saldo |
+| 2 | Organização | + Recorrências, categorias, calendário |
+| 3 | Controle Total | + Múltiplas contas, cartões de crédito |
+| 4 | Estrategista | + Metas, projeções, análises avançadas |
+
+> Ver `SISTEMA_DE_NIVEIS.md` para detalhes completos.
 
 ---
 
-## 💳 REGRAS DE NEGÓCIO: PLANOS (SaaS)
-1.  **Planos:**
-    -   `free`: Manual (sem IA ou limitado).
-    -   `pro`: IA Ilimitada, Múltiplos Cartões, Gráficos Avançados.
-2.  **Status:**
-    -   `active`: Acesso total.
-    -   `overdue`: Bloqueio de novos lançamentos.
+## 🔒 REGRAS DE SEGURANÇA
+
+1. **Multi-Tenancy:** TODAS as tabelas têm `user_id` e RLS obrigatório
+2. **Server Actions:** Regras de negócio ficam no backend
+3. **Validação:** Sempre verificar usuário autenticado antes de operações
 
 ---
 
-## 🚀 ROADMAP DE MIGRAÇÃO (PIVOT)
+## 📱 UX PRINCIPLES
 
-### FASE 1: Limpeza e Estrutura
-- [ ] Criar novas tabelas (`payment_methods`, `transactions`, `categories`).
-- [ ] Remover tabelas antigas (`services`, `clients`) - *Cuidado com dependências*.
-- [ ] Atualizar tipos TypeScript.
+1. **Chat-First:** A home é o chat. Interação por texto ou voz.
+2. **Simplicidade:** Usuário fala "Gastei 50 no Uber" e pronto.
+3. **Feedback Visual:** Indicadores de "pensando", sucesso (verde), erro (vermelho)
+4. **Edição Manual:** Formulários disponíveis para ajuste fino
 
-### FASE 2: Cérebro da IA
-- [ ] Reescrever System Prompt (`CommandCenter`) para contexto financeiro.
-- [ ] Criar Tools/Functions para `insert_transaction`, `get_balance`, `add_card`.
+---
 
-### FASE 3: Interface
-- [ ] Transformar Agenda de Serviços em Agenda Financeira (Contas a Pagar).
-- [ ] Criar Dashboard Financeiro (Gráficos).
-- [ ] Ajustar fluxo de Onboarding (Cadastrar Cartões em vez de Serviços).
+## ⚠️ REGRAS DE GOVERNANÇA
+
+Ver arquivo `RULES.md` para:
+- Autorização explícita obrigatória
+- Proibições de alterações automáticas
+- Procedimentos de validação

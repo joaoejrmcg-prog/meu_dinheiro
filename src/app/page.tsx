@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import CommandCenter from "./components/CommandCenter";
 import Confetti from "./components/Confetti";
+import PaymentReminder from "./components/PaymentReminder";
 import { Sparkles, RotateCcw } from "lucide-react";
 import { DashboardProvider, useDashboard } from "./context/DashboardContext";
 import SubscriptionStatus from "./components/SubscriptionStatus";
@@ -65,6 +66,13 @@ function HomeContent() {
 
   const handleLevelUp = async () => {
     const nextLevel = userLevel + 1;
+
+    // Nível 3+ ainda está em desenvolvimento
+    if (nextLevel >= 3) {
+      alert('🚧 Em breve!\n\nO Nível 3 está em fase de implantação. Você será notificado quando estiver disponível!\n\nContinue aproveitando as funcionalidades do Nível 2. 😊');
+      return;
+    }
+
     console.log(`Botão Nível ${nextLevel} clicado, disparando ação via Context...`);
     triggerTutorial(`START_L${nextLevel}`);
   };
@@ -90,6 +98,9 @@ function HomeContent() {
               </span>
             </h1>
           </div>
+
+          {/* Payment Reminders - Only show for level 2+ users */}
+          {userLevel >= 2 && <PaymentReminder />}
 
           {/* Chat Area */}
           <div className="flex-1 min-h-0 w-full max-w-2xl mx-auto flex flex-col">

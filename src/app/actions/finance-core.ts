@@ -62,9 +62,15 @@ export async function createMovement(params: CreateMovementParams) {
         isReimbursement
     } = params;
 
+    // Determine if this is a pending payment (will be paid later)
+    const finalIsPaidCheck = isPaid !== undefined ? isPaid : (dueDate ? false : true);
+    const isPendingPayment = finalIsPaidCheck === false;
+
     // 0. Auto-assign default account if none specified (and no card)
+    // SKIP for pending payments - they don't affect balance until paid
     let finalAccountId = accountId;
-    if (!finalAccountId && !cardId && (type === 'income' || type === 'expense')) {
+    let accountName: string | null = null;
+    if (!finalAccountId && !cardId && (type === 'income' || type === 'expense') && !isPendingPayment) {
         const { getDefaultAccount, getOrCreateWallet } = await import('./assets');
         let defaultAccount = await getDefaultAccount();
 
@@ -76,6 +82,7 @@ export async function createMovement(params: CreateMovementParams) {
 
         if (defaultAccount) {
             finalAccountId = defaultAccount.id;
+            accountName = defaultAccount.name;
         } else {
             // This should never happen, but log if it does
             console.error('createMovement: CRITICAL - Could not get or create default account!');
@@ -157,9 +164,14 @@ export async function createMovement(params: CreateMovementParams) {
         }
 
         // C. Handle Account Balance Update
-        if (finalAccountId) {
+        // SKIP for pending payments - they don't affect balance until marked as paid
+        if (finalAccountId && !isPendingPayment) {
             const { data: account } = await supabase.from('accounts').select('*').eq('id', finalAccountId).single();
             if (account) {
+                // Capture account name if not already set
+                if (!accountName) {
+                    accountName = account.name;
+                }
                 let newBalance = account.balance;
                 if (type === 'income') newBalance += amount;
                 if (type === 'expense') newBalance -= amount;
@@ -178,7 +190,7 @@ export async function createMovement(params: CreateMovementParams) {
 
         // D. Create Movement Record
         // Smart default: is_paid = true if no dueDate, otherwise false (pending payment)
-        const finalIsPaid = isPaid !== undefined ? isPaid : (dueDate ? false : true);
+        const finalIsPaid = isPendingPayment ? false : true;
 
         const { data: movement, error: moveError } = await supabase
             .from('movements')
@@ -205,14 +217,16 @@ export async function createMovement(params: CreateMovementParams) {
         if (moveError) throw moveError;
 
         // Increment action count for level progression
+        let hitMilestone = false;
         try {
-            await incrementActionCount();
+            const actionResult = await incrementActionCount();
+            hitMilestone = actionResult.hitMilestone;
         } catch (e) {
             console.error('Error incrementing action count:', e);
             // Don't fail the movement creation if this fails
         }
 
-        return { success: true, data: movement };
+        return { success: true, data: movement, hitMilestone, accountName };
 
     } catch (error: any) {
         console.error("Error creating movement:", error);
@@ -230,14 +244,27 @@ export async function getFinancialStatus() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
 
-    // Fetch movements
+    // Fetch movements for this month
     const { data: movements } = await supabase
         .from('movements')
         .select('*')
         .gte('date', startOfMonth)
         .lte('date', endOfMonth);
 
-    if (!movements) return { realIncome: 0, realExpense: 0, balance: 0 };
+    // Recalculate balances first (same as dashboard does)
+    const { recalculateBalances } = await import('./assets');
+    await recalculateBalances();
+
+    // Fetch total balance from all accounts (excluding savings, to match dashboard)
+    const { data: accounts } = await supabase
+        .from('accounts')
+        .select('balance, type')
+        .eq('user_id', user.id)
+        .neq('type', 'savings');
+
+    const totalBalance = accounts?.reduce((sum, acc) => sum + (acc.balance || 0), 0) || 0;
+
+    if (!movements) return { realIncome: 0, realExpense: 0, monthlyBalance: 0, previousBalance: totalBalance, totalBalance };
 
     let realIncome = 0;
     let realExpense = 0;
@@ -254,10 +281,15 @@ export async function getFinancialStatus() {
         }
     });
 
+    // Calculate previous balance (saldo anterior = total - income + expense)
+    const previousBalance = totalBalance - realIncome + realExpense;
+
     return {
+        previousBalance,     // Saldo anterior (antes deste mês)
         realIncome,
         realExpense,
-        balance: realIncome - realExpense // Net Result
+        monthlyBalance: realIncome - realExpense, // Este mês
+        totalBalance // Saldo total em todas as contas
     };
 }
 
@@ -310,4 +342,260 @@ export async function deleteLastMovement(): Promise<{ success: boolean; error?: 
     }
 
     return { success: true, deletedDescription: lastMovement.description };
+}
+
+export async function updateLastMovementAccount(newAccountName: string): Promise<{
+    success: boolean;
+    error?: string;
+    oldAccountName?: string;
+    newAccountName?: string;
+    movementDescription?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Não autorizado" };
+
+    // 1. Find the most recent movement
+    const { data: lastMovement, error: fetchError } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (fetchError || !lastMovement) {
+        return { success: false, error: "Nenhum lançamento encontrado para corrigir." };
+    }
+
+    // 2. Find the new account by name
+    const { getAccountByName } = await import('./assets');
+    const newAccount = await getAccountByName(newAccountName);
+
+    if (!newAccount) {
+        return { success: false, error: `Conta "${newAccountName}" não encontrada.` };
+    }
+
+    // 3. Get old account name for the response
+    let oldAccountName = "desconhecida";
+    if (lastMovement.account_id) {
+        const { data: oldAccount } = await supabase
+            .from('accounts')
+            .select('name')
+            .eq('id', lastMovement.account_id)
+            .single();
+        if (oldAccount) {
+            oldAccountName = oldAccount.name;
+        }
+    }
+
+    // 4. Revert balance from old account (if applicable and paid)
+    if (lastMovement.account_id && lastMovement.is_paid) {
+        const { data: oldAcc } = await supabase
+            .from('accounts')
+            .select('balance')
+            .eq('id', lastMovement.account_id)
+            .single();
+
+        if (oldAcc) {
+            let revertedBalance = oldAcc.balance;
+            // Reverse the effect on old account
+            if (lastMovement.type === 'income') {
+                revertedBalance -= lastMovement.amount;
+            } else if (lastMovement.type === 'expense') {
+                revertedBalance += lastMovement.amount;
+            }
+            await supabase.from('accounts').update({ balance: revertedBalance }).eq('id', lastMovement.account_id);
+        }
+    }
+
+    // 5. Apply balance to new account (if paid)
+    if (lastMovement.is_paid) {
+        const { data: newAcc } = await supabase
+            .from('accounts')
+            .select('balance')
+            .eq('id', newAccount.id)
+            .single();
+
+        if (newAcc) {
+            let newBalance = newAcc.balance;
+            if (lastMovement.type === 'income') {
+                newBalance += lastMovement.amount;
+            } else if (lastMovement.type === 'expense') {
+                newBalance -= lastMovement.amount;
+            }
+            await supabase.from('accounts').update({ balance: newBalance }).eq('id', newAccount.id);
+        }
+    }
+
+    // 6. Update the movement's account_id
+    const { error: updateError } = await supabase
+        .from('movements')
+        .update({ account_id: newAccount.id })
+        .eq('id', lastMovement.id);
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    return {
+        success: true,
+        oldAccountName,
+        newAccountName: newAccount.name,
+        movementDescription: lastMovement.description
+    };
+}
+
+// Find pending movement by search term (for reconciling payments)
+export async function findPendingMovement(searchTerm: string): Promise<{
+    success: boolean;
+    movement?: any;
+    error?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Não autorizado" };
+
+    // Search for pending (unpaid) movements matching the search term
+    const { data: movements, error } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_paid', false)
+        .ilike('description', `%${searchTerm}%`)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    // Also log ALL pending movements to debug
+    const { data: allPending } = await supabase
+        .from('movements')
+        .select('description, is_paid, due_date')
+        .eq('user_id', user.id)
+        .eq('is_paid', false)
+        .limit(10);
+
+    console.log(`[findPendingMovement] All pending movements:`, allPending?.map(m => m.description));
+    console.log(`[findPendingMovement] Searching for "${searchTerm}", found ${movements?.length || 0} results`);
+
+    if (error) {
+        console.error('[findPendingMovement] Error:', error);
+        return { success: false, error: error.message };
+    }
+
+    if (!movements || movements.length === 0) {
+        return { success: false, error: `Nenhuma conta pendente encontrada com "${searchTerm}".` };
+    }
+
+    return { success: true, movement: movements[0] };
+}
+
+// Update pending movement amount and optionally mark as paid
+export async function updatePendingMovement(params: {
+    movementId: string;
+    amount?: number;
+    markAsPaid?: boolean;
+}): Promise<{
+    success: boolean;
+    movement?: any;
+    accountName?: string;
+    error?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Não autorizado" };
+
+    const { movementId, amount, markAsPaid } = params;
+
+    // Build update object
+    const updateData: any = {};
+    if (amount !== undefined && amount > 0) {
+        updateData.amount = amount;
+    }
+    if (markAsPaid) {
+        updateData.is_paid = true;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        return { success: false, error: "Nada para atualizar." };
+    }
+
+    // Get the movement first to update account balance if marking as paid
+    const { data: movement, error: fetchError } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('id', movementId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (fetchError || !movement) {
+        return { success: false, error: "Movimento não encontrado." };
+    }
+
+    let accountName: string | undefined;
+    let accountIdToUse = movement.account_id;
+
+    // If marking as paid and movement doesn't have an account, assign default account
+    if (markAsPaid && !movement.is_paid) {
+        if (!accountIdToUse && (movement.type === 'income' || movement.type === 'expense')) {
+            // Get default account
+            const { getDefaultAccount, getOrCreateWallet } = await import('./assets');
+            let defaultAccount = await getDefaultAccount();
+
+            if (!defaultAccount) {
+                defaultAccount = await getOrCreateWallet();
+            }
+
+            if (defaultAccount) {
+                accountIdToUse = defaultAccount.id;
+                accountName = defaultAccount.name;
+                updateData.account_id = accountIdToUse;
+            }
+        } else if (accountIdToUse) {
+            // Movement already has account, just get the name
+            const { data: account } = await supabase
+                .from('accounts')
+                .select('name')
+                .eq('id', accountIdToUse)
+                .single();
+            if (account) {
+                accountName = account.name;
+            }
+        }
+
+        // Update account balance
+        if (accountIdToUse) {
+            const finalAmount = amount !== undefined ? amount : movement.amount;
+
+            const { data: account } = await supabase
+                .from('accounts')
+                .select('balance')
+                .eq('id', accountIdToUse)
+                .single();
+
+            if (account) {
+                let newBalance = account.balance;
+                if (movement.type === 'income') {
+                    newBalance += finalAmount;
+                } else if (movement.type === 'expense') {
+                    newBalance -= finalAmount;
+                }
+                await supabase.from('accounts').update({ balance: newBalance }).eq('id', accountIdToUse);
+            }
+        }
+    }
+
+    // Update the movement
+    const { data: updatedMovement, error: updateError } = await supabase
+        .from('movements')
+        .update(updateData)
+        .eq('id', movementId)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    return { success: true, movement: updatedMovement, accountName };
 }
