@@ -427,11 +427,11 @@ export default function DashboardPage() {
                                     contentStyle={{ backgroundColor: '#171717', borderColor: '#262626', borderRadius: '8px' }}
                                     itemStyle={{ color: '#e5e5e5' }}
                                     labelStyle={{ color: '#a3a3a3' }}
-                                    formatter={(value: any, name: string) => {
+                                    formatter={(value: any, name?: string) => {
                                         if (value === null || value === undefined) return null;
                                         const val = `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
                                         // Remove "(Real)" and "(Prev)" suffixes for cleaner display
-                                        const cleanName = name.replace(' (Real)', '').replace(' (Prev)', '');
+                                        const cleanName = (name || '').replace(' (Real)', '').replace(' (Prev)', '');
                                         return [val, cleanName];
                                     }}
                                     // Filter out null values
