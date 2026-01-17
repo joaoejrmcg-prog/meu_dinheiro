@@ -54,10 +54,10 @@ export function TutorialMessage({
                                 transition-all duration-200 
                                 disabled:opacity-50 disabled:cursor-not-allowed
                                 ${btn.variant === 'primary'
-                                    ? 'bg-[var(--primary)] text-black hover:bg-[var(--primary)]/80 shadow-lg shadow-[var(--primary)]/20'
+                                    ? 'bg-sky-500 text-white hover:bg-sky-600 shadow-lg shadow-sky-500/20'
                                     : btn.variant === 'bank'
-                                        ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30 hover:bg-purple-600/30 hover:border-purple-400'
-                                        : 'bg-neutral-800 text-neutral-200 border border-neutral-700 hover:bg-neutral-700 hover:border-neutral-600'
+                                        ? 'bg-purple-100 text-purple-700 border border-purple-300 hover:bg-purple-200'
+                                        : 'bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200'
                                 }
                             `}
                         >

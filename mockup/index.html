@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup - Meu Dinheiro (Input Destacado)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background: #1a1a1a;
+            padding: 30px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #fff;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .preview-container {
+            display: flex;
+            gap: 60px;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .preview-wrapper {
+            text-align: center;
+        }
+
+        .preview-label {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .preview-sublabel {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 16px;
+        }
+
+        /* Mobile Frame */
+        .mobile-frame {
+            width: 375px;
+            height: 700px;
+            border-radius: 40px;
+            overflow: hidden;
+            border: 8px solid #444;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        /* ===== TEMA CLARO ===== */
+        .theme-light {
+            --background: #F8FAFC;
+            --card-bg: #FFFFFF;
+            --border: #E2E8F0;
+            --primary: #0EA5E9;
+            --text-primary: #1E293B;
+            --text-secondary: #64748B;
+            --text-muted: #94A3B8;
+            --messages-bg: #F1F5F9;
+            --header-bg: #FFFFFF;
+            --input-bg: #FFFFFF;
+        }
+
+        .theme-light .mobile-frame {
+            background: var(--background);
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: var(--header-bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .menu-icon {
+            width: 22px;
+            height: 22px;
+            color: var(--text-secondary);
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .header-icon {
+            width: 22px;
+            height: 22px;
+            color: var(--text-secondary);
+        }
+
+        .notification-badge {
+            position: relative;
+        }
+
+        .notification-badge::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 8px;
+            height: 8px;
+            background: #EF4444;
+            border-radius: 50%;
+        }
+
+        .avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary) 0%, #8B5CF6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 13px;
+            color: #fff;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 16px;
+            overflow: hidden;
+        }
+
+        .app-title {
+            text-align: center;
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            letter-spacing: -0.5px;
+        }
+
+        /* Chat Container */
+        .chat-container {
+            flex: 1;
+            background: var(--card-bg);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Chat Header */
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ai-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: rgba(14, 165, 233, 0.15);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+        }
+
+        .chat-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+
+        .chat-status {
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: #10B981;
+            border-radius: 50%;
+            box-shadow: 0 0 6px #10B981;
+        }
+
+        .chat-header-right {
+            text-align: right;
+        }
+
+        .plan-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background: rgba(14, 165, 233, 0.15);
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--primary);
+            letter-spacing: 0.5px;
+        }
+
+        .plan-expiry {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        /* Messages Area */
+        .messages-area {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            background: var(--messages-bg);
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 14px;
+            margin-bottom: 10px;
+        }
+
+        .message-ai {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .message-text {
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+
+        /* ===== INPUT AREA - DESTACADO ===== */
+        .input-area {
+            padding: 14px 16px;
+            border-top: 1px solid var(--border);
+            background: var(--card-bg);
+        }
+
+        .input-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* OPÇÃO 1: Input com borda azul e sombra */
+        .input-style-1 .text-input {
+            flex: 1;
+            background: #FFFFFF;
+            border: 2px solid var(--primary);
+            border-radius: 14px;
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15), 0 4px 12px rgba(14, 165, 233, 0.1);
+        }
+
+        /* OPÇÃO 2: Input com gradiente de borda */
+        .input-style-2 .text-input {
+            flex: 1;
+            background: linear-gradient(#fff, #fff) padding-box,
+                linear-gradient(135deg, #0EA5E9, #8B5CF6) border-box;
+            border: 2px solid transparent;
+            border-radius: 14px;
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.2);
+        }
+
+        /* OPÇÃO 3: Input com fundo colorido suave */
+        .input-style-3 .text-input {
+            flex: 1;
+            background: linear-gradient(135deg, #E0F2FE 0%, #F0F9FF 100%);
+            border: 2px solid #0EA5E9;
+            border-radius: 14px;
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+        }
+
+        .text-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .btn-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .btn-mic {
+            background: var(--messages-bg);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .btn-send {
+            background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 10px;
+            font-size: 10px;
+            color: var(--text-muted);
+            background: var(--background);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: underline;
+        }
+
+        svg {
+            width: 18px;
+            height: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🎯 Qual input chama mais atenção?</h1>
+
+    <div class="preview-container">
+        <!-- OPÇÃO 1: Borda azul + glow -->
+        <div class="preview-wrapper theme-light input-style-1">
+            <div class="preview-label">Opção 1</div>
+            <div class="preview-sublabel">Borda azul + glow suave</div>
+            <div class="mobile-frame">
+                <header class="header">
+                    <div class="header-left">
+                        <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                        <span class="user-name">jaimerodriguesjunior</span>
+                    </div>
+                    <div class="header-right">
+                        <span class="notification-badge">
+                            <svg class="header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                        </span>
+                        <svg class="header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="avatar">J</div>
+                    </div>
+                </header>
+
+                <main class="main-content">
+                    <h1 class="app-title">Meu Dinheiro</h1>
+
+                    <div class="chat-container">
+                        <div class="chat-header">
+                            <div class="chat-header-left">
+                                <div class="ai-icon">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="chat-title">Assistente IA</div>
+                                    <div class="chat-status">
+                                        <span class="status-dot"></span>
+                                        Online
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-header-right">
+                                <span class="plan-badge">TRIAL</span>
+                                <div class="plan-expiry">Vence em 20/01/2026</div>
+                            </div>
+                        </div>
+
+                        <div class="messages-area">
+                            <div class="message message-ai">
+                                <div class="message-label">
+                                    <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                    IA
+                                </div>
+                                <div class="message-text">
+                                    Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="input-area">
+                            <div class="input-container">
+                                <input type="text" class="text-input" placeholder="Digite ou fale um comando...">
+                                <button class="btn-icon btn-mic">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-send">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <footer class="footer">
+                    © 2026 NeoManager. <a href="#">Termos</a>
+                </footer>
+            </div>
+        </div>
+
+        <!-- OPÇÃO 2: Gradiente de borda -->
+        <div class="preview-wrapper theme-light input-style-2">
+            <div class="preview-label">Opção 2</div>
+            <div class="preview-sublabel">Borda gradiente azul→roxo</div>
+            <div class="mobile-frame">
+                <header class="header">
+                    <div class="header-left">
+                        <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                        <span class="user-name">jaimerodriguesjunior</span>
+                    </div>
+                    <div class="header-right">
+                        <span class="notification-badge">
+                            <svg class="header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                        </span>
+                        <svg class="header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="avatar">J</div>
+                    </div>
+                </header>
+
+                <main class="main-content">
+                    <h1 class="app-title">Meu Dinheiro</h1>
+
+                    <div class="chat-container">
+                        <div class="chat-header">
+                            <div class="chat-header-left">
+                                <div class="ai-icon">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="chat-title">Assistente IA</div>
+                                    <div class="chat-status">
+                                        <span class="status-dot"></span>
+                                        Online
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-header-right">
+                                <span class="plan-badge">TRIAL</span>
+                                <div class="plan-expiry">Vence em 20/01/2026</div>
+                            </div>
+                        </div>
+
+                        <div class="messages-area">
+                            <div class="message message-ai">
+                                <div class="message-label">
+                                    <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                    IA
+                                </div>
+                                <div class="message-text">
+                                    Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="input-area">
+                            <div class="input-container">
+                                <input type="text" class="text-input" placeholder="Digite ou fale um comando...">
+                                <button class="btn-icon btn-mic">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-send">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <footer class="footer">
+                    © 2026 NeoManager. <a href="#">Termos</a>
+                </footer>
+            </div>
+        </div>
+
+        <!-- OPÇÃO 3: Fundo colorido -->
+        <div class="preview-wrapper theme-light input-style-3">
+            <div class="preview-label">Opção 3</div>
+            <div class="preview-sublabel">Fundo azul suave + borda</div>
+            <div class="mobile-frame">
+                <header class="header">
+                    <div class="header-left">
+                        <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                        <span class="user-name">jaimerodriguesjunior</span>
+                    </div>
+                    <div class="header-right">
+                        <span class="notification-badge">
+                            <svg class="header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                        </span>
+                        <svg class="header-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="avatar">J</div>
+                    </div>
+                </header>
+
+                <main class="main-content">
+                    <h1 class="app-title">Meu Dinheiro</h1>
+
+                    <div class="chat-container">
+                        <div class="chat-header">
+                            <div class="chat-header-left">
+                                <div class="ai-icon">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="chat-title">Assistente IA</div>
+                                    <div class="chat-status">
+                                        <span class="status-dot"></span>
+                                        Online
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-header-right">
+                                <span class="plan-badge">TRIAL</span>
+                                <div class="plan-expiry">Vence em 20/01/2026</div>
+                            </div>
+                        </div>
+
+                        <div class="messages-area">
+                            <div class="message message-ai">
+                                <div class="message-label">
+                                    <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                    IA
+                                </div>
+                                <div class="message-text">
+                                    Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="input-area">
+                            <div class="input-container">
+                                <input type="text" class="text-input" placeholder="Digite ou fale um comando...">
+                                <button class="btn-icon btn-mic">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                    </svg>
+                                </button>
+                                <button class="btn-icon btn-send">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <footer class="footer">
+                    © 2026 NeoManager. <a href="#">Termos</a>
+                </footer>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

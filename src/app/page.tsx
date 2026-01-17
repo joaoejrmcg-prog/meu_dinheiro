@@ -78,26 +78,17 @@ function HomeContent() {
   };
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col items-center justify-center max-w-4xl mx-auto w-full md:p-4">
+    <div className="h-full flex flex-col items-center max-w-4xl mx-auto w-full px-4" style={{ background: 'var(--light-background)' }}>
       <Confetti trigger={showConfetti} onComplete={() => setShowConfetti(false)} />
-      <div className="w-full flex-1 flex flex-col relative overflow-hidden">
+
+      {/* Título - margem pequena acima e abaixo */}
+      <h1 className="text-2xl font-bold tracking-tight text-center flex-shrink-0 my-1" style={{ color: 'var(--light-text-primary)' }}>
+        Meu Dinheiro IA
+      </h1>
+
+      <div className="w-full flex-1 flex flex-col relative overflow-hidden min-h-0 pb-2">
 
         <div className="relative z-10 flex flex-col h-full">
-          {/* Header Minimalista */}
-          <div className="text-center mb-2 flex-shrink-0">
-            <h1 className="text-2xl font-light text-[var(--foreground)] tracking-tight flex flex-col items-center justify-center gap-2">
-              <span className="font-semibold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent">
-                Meu Dinheiro
-              </span>
-              <span className="text-sm text-neutral-500 flex items-center gap-2">
-                Seu Assistente Financeiro
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/20 text-[var(--primary)] text-[10px] font-medium">
-                  <Sparkles className="w-3 h-3" />
-                  IA
-                </span>
-              </span>
-            </h1>
-          </div>
 
           {/* Payment Reminders - Only show for level 2+ users */}
           {userLevel >= 2 && <PaymentReminder />}
@@ -107,72 +98,19 @@ function HomeContent() {
             <CommandCenter />
           </div>
 
-          {/* Micro-interactions / Suggestions - Grid responsivo */}
-          <div className="mt-4 px-2 pb-2">
-            {userLevel === 0 ? (
-              /* Nível 0: botões discretos - tutorial já começa automático */
-              <div className="flex gap-3 justify-center max-w-md mx-auto">
-                <button
-                  onClick={() => handleSuggestionClick("Quero refazer o tutorial")}
-                  className="text-xs px-4 py-2 rounded-lg bg-neutral-800/30 border border-neutral-700/50 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300 transition-colors flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  Reiniciar Tutorial
-                </button>
-                <button
-                  onClick={() => handleSuggestionClick("Pular tutorial")}
-                  className="text-xs px-4 py-2 rounded-lg bg-neutral-800/30 border border-neutral-700/50 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
-                >
-                  Pular →
-                </button>
-              </div>
-            ) : (
-              /* Níveis 1+: grid com sugestões + refazer tutorial */
-              <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
-                {suggestions.map((sug, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSuggestionClick(sug)}
-                    className="text-xs px-3 py-2 rounded-lg bg-neutral-800/50 border border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors truncate"
-                    title={sug}
-                  >
-                    {sug}
-                  </button>
-                ))}
-                {/* Botão Refazer Tutorial ou Ir para Nível X+1 */}
-                {actionCount >= 2 && userLevel < 4 ? (
-                  <button
-                    onClick={handleLevelUp}
-                    className="text-xs px-3 py-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 hover:text-amber-200 transition-all flex items-center justify-center gap-1.5 animate-in fade-in duration-500"
-                    title="Novos desafios disponíveis!"
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    Ir para Nível {userLevel + 1}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleRedoTutorial}
-                    className="text-xs px-3 py-2 rounded-lg bg-emerald-900/30 border border-emerald-700/50 text-emerald-400 hover:bg-emerald-800/40 hover:text-emerald-300 transition-colors flex items-center justify-center gap-1.5"
-                    title="Refazer tutorial"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Refazer tutorial nível {userLevel}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Botões contextuais removidos - aparecem via chat quando necessário */}
 
         </div>
       </div>
 
       {/* Footer */}
       <div className="text-center p-4">
-        <p className="text-xs text-zinc-600">
-          &copy; 2025 NeoManager.
+        <p className="text-xs" style={{ color: 'var(--light-text-muted)' }}>
+          &copy; 2026 NeoManager.
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-terms-modal'))}
-            className="ml-2 underline hover:text-[var(--primary)] transition-colors"
+            className="ml-2 underline hover:opacity-70 transition-opacity"
+            style={{ color: 'var(--light-text-secondary)' }}
           >
             Termos
           </button>

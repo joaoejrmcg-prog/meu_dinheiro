@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import TermsModal from "./TermsModal";
+import TipsModal from "./TipsModal";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -118,18 +119,23 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         );
     }
 
+    // Determine if we're on the home page (light theme)
+    const isHomePage = pathname === '/';
+
     return (
-        <div className="flex min-h-screen bg-neutral-950 text-neutral-100 font-sans">
+        <div className={`flex min-h-screen font-sans ${isHomePage ? 'text-slate-800' : 'bg-neutral-950 text-neutral-100'}`}
+            style={isHomePage ? { background: 'var(--light-background)' } : {}}>
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
             <div className="flex-1 lg:ml-64 flex flex-col w-full">
                 <div className="print:hidden sticky top-0 z-40">
-                    <Header onMenuClick={() => setIsSidebarOpen(true)} />
+                    <Header onMenuClick={() => setIsSidebarOpen(true)} isLightTheme={isHomePage} />
                 </div>
-                <main className="flex-1 p-4 lg:p-8 relative overflow-y-auto">
+                <main className={`flex-1 relative overflow-y-auto ${isHomePage ? 'p-0' : 'p-4 lg:p-8'}`}>
                     {children}
                 </main>
             </div>
             <TermsModal />
+            <TipsModal />
         </div>
     );
 }

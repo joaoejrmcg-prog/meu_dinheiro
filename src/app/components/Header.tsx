@@ -9,9 +9,10 @@ import NotificationBell from "./NotificationBell";
 
 interface HeaderProps {
     onMenuClick?: () => void;
+    isLightTheme?: boolean;
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, isLightTheme = false }: HeaderProps) {
     const [user, setUser] = useState<User | null>(null);
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
@@ -83,16 +84,21 @@ export default function Header({ onMenuClick }: HeaderProps) {
     };
 
     return (
-        <header className="h-16 border-b border-neutral-800 bg-neutral-950/50 backdrop-blur-md flex items-center justify-between px-4 lg:px-8">
+        <header
+            className={`h-16 border-b flex items-center justify-between px-4 lg:px-8 ${isLightTheme ? 'border-slate-200' : 'border-neutral-800 bg-neutral-950/50 backdrop-blur-md'}`}
+            style={isLightTheme ? { background: 'var(--light-card-bg)' } : {}}
+        >
             <div className="flex items-center gap-4">
                 <button
                     onClick={onMenuClick}
-                    className="lg:hidden p-2 text-neutral-400 hover:text-white"
+                    className={`lg:hidden p-2 ${isLightTheme ? 'text-slate-600 hover:text-slate-900' : 'text-neutral-400 hover:text-white'}`}
                 >
                     <Menu className="w-6 h-6" />
                 </button>
-                <h2 className="text-neutral-200 font-medium">
-                    Olá, <span className="bg-gradient-to-r from-amber-400 to-yellow-600 bg-clip-text text-transparent font-bold">{user?.email?.split('@')[0] || 'Visitante'}</span>
+                <h2 className="font-medium" style={{ color: isLightTheme ? 'var(--light-text-primary)' : undefined }}>
+                    <span className={isLightTheme ? 'font-bold text-sky-600' : 'bg-gradient-to-r from-amber-400 to-yellow-600 bg-clip-text text-transparent font-bold'}>
+                        {user?.email?.split('@')[0] || 'Visitante'}
+                    </span>
                 </h2>
             </div>
 
@@ -101,7 +107,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                 <TipOfTheDay />
                 <div
                     onClick={handleAvatarClick}
-                    className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-600 flex items-center justify-center text-xs font-bold text-white cursor-pointer overflow-hidden relative hover:opacity-80 transition-opacity"
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-pointer overflow-hidden relative hover:opacity-80 transition-opacity ${isLightTheme ? 'bg-gradient-to-tr from-sky-500 to-blue-600' : 'bg-gradient-to-tr from-amber-400 to-yellow-600'}`}
                     title="Clique para alterar a foto"
                 >
                     {uploading ? (

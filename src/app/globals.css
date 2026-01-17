@@ -1,17 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  /* Cyber/Crypto Theme */
-  --background: #050505; /* Deep Black */
+  /* Tema Escuro (padrão para outras páginas) */
+  --background: #050505;
   --foreground: #ededed;
-  
-  /* Neon Accents */
-  --primary: #00ff9d;   /* Neon Green */
-  --secondary: #bd00ff; /* Neon Purple */
-  --accent: #00f3ff;    /* Cyan */
-  
+  --primary: #00ff9d;
+  --secondary: #bd00ff;
+  --accent: #00f3ff;
   --card-bg: #111111;
   --border-color: #333333;
+
+  /* Tema Claro (Home/Chat) */
+  --light-background: #F8FAFC;
+  --light-card-bg: #FFFFFF;
+  --light-border: #E2E8F0;
+  --light-primary: #0EA5E9;
+  --light-text-primary: #1E293B;
+  --light-text-secondary: #64748B;
+  --light-text-muted: #94A3B8;
+  --light-messages-bg: #F1F5F9;
 }
 
 body {
@@ -22,11 +29,14 @@ body {
 
 /* Glowing Orbs for Cyber Vibe */
 @keyframes orb-float-1 {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
     opacity: 0.4;
     background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
   }
+
   50% {
     transform: translate(30px, -50px) scale(1.2);
     opacity: 0.6;
@@ -34,11 +44,14 @@ body {
 }
 
 @keyframes orb-float-2 {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
     opacity: 0.3;
     background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
   }
+
   50% {
     transform: translate(-40px, 30px) scale(1.1);
     opacity: 0.5;
@@ -46,11 +59,14 @@ body {
 }
 
 @keyframes orb-float-3 {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
     opacity: 0.3;
     background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
   }
+
   50% {
     transform: translate(20px, 40px) scale(0.9);
     opacity: 0.5;

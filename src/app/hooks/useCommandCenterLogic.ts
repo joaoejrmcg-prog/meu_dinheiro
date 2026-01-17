@@ -186,9 +186,23 @@ export function useCommandCenterLogic() {
         };
         window.addEventListener('terms-accepted', handleTermsAccepted);
 
+        // Listen for tips modal closed event to show final congratulations
+        const handleTipsModalClosed = () => {
+            setTutorialStep('IDLE');
+            setMessages(prev => [...prev, {
+                id: 'l1-done-' + Date.now(),
+                role: 'assistant',
+                content: "🎉 Parabéns! Estamos prontos pra começar!\n\nAgora você pode me dizer sempre que gastar ou receber dinheiro:\n• \"Gastei 50 no mercado\"\n• \"Recebi 1000 do salário\"\n• \"Como estou esse mês?\"",
+                type: 'success',
+                isTyping: true
+            }]);
+        };
+        window.addEventListener('tipsModalClosed', handleTipsModalClosed);
+
         return () => {
             isMounted = false;
             window.removeEventListener('terms-accepted', handleTermsAccepted);
+            window.removeEventListener('tipsModalClosed', handleTipsModalClosed);
         };
     }, []);
 
@@ -332,7 +346,7 @@ export function useCommandCenterLogic() {
             return true; // Handled
         }
 
-        // L1 Finish - Final message
+        // L1 Finish - Show tips offer message
         if (userInput === 'L1_FINISH') {
             // Update user level to 1
             await updateUserLevel(1 as UserLevel);
@@ -343,13 +357,17 @@ export function useCommandCenterLogic() {
                 window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 1 } }));
             }
 
-            setTutorialStep('IDLE');
+            // Show tips offer message (intermediate step before final congratulations)
             setMessages(prev => [...prev, {
-                id: 'l1-done-' + Date.now(),
+                id: 'l1-tips-offer-' + Date.now(),
                 role: 'assistant',
-                content: "🎉 Parabéns! Estamos prontos pra começar!\n\nAgora você pode me dizer sempre que gastar ou receber dinheiro:\n• \"Gastei 50 no mercado\"\n• \"Recebi 1000 do salário\"\n• \"Como estou esse mês?\"\n\n📊 Quer ver seus lançamentos? Abra no menu a tela **Financeiro**, ou me peça: \"Abre a tela Financeiro\".",
-                type: 'success'
+                content: "💡 Esse app tem várias funções avançadas, mas você não precisa usar tudo.\nSe o que você quer é só controlar o que entra e sai no dia a dia, esse nível é ideal. Simples, direto e eficiente.\n\n📊 Quer ver seus lançamentos? Abra no menu a tela **Financeiro**.",
+                buttons: [
+                    { label: 'Não cometa erros de lançamento', value: 'L1_SHOW_TIPS', variant: 'secondary' },
+                    { label: 'Continuar', value: 'L1_START', variant: 'primary' }
+                ]
             }]);
+            // Keep tutorialStep as COMPLETE so handlers still work
             return true;
         }
 
@@ -766,6 +784,29 @@ export function useCommandCenterLogic() {
                 }, 500);
                 return;
             }
+        }
+
+        // ==========================================
+        // L1 Tutorial Button Handlers (work even after tutorialStep is IDLE)
+        // ==========================================
+        if (userInput === 'L1_SHOW_TIPS') {
+            // Dispatch event to open tips modal
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('showTipsModal'));
+            }
+            return;
+        }
+
+        if (userInput === 'L1_START') {
+            // Show final congratulations message
+            setTutorialStep('IDLE');
+            setMessages(prev => [...prev, {
+                id: 'l1-done-' + Date.now(),
+                role: 'assistant',
+                content: "🎉 Parabéns! Estamos prontos pra começar!\n\nAgora você pode me dizer sempre que gastar ou receber dinheiro:\n• \"Gastei 50 no mercado\"\n• \"Recebi 1000 do salário\"\n• \"Como estou esse mês?\"",
+                type: 'success'
+            }]);
+            return;
         }
 
         // If in tutorial, process tutorial input and BLOCK normal AI
