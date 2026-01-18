@@ -1159,7 +1159,8 @@ export async function processCommand(input: string, history: string[] = [], inpu
         }
       } else if (findResult.notFound) {
         // Recurrence doesn't exist - check if we have enough info to create
-        if (d.due_day && (d.amount || d.amount === 0)) {
+        // DA requires: day, value (or 0 for variable), AND bank account
+        if (d.due_day && (d.amount || d.amount === 0) && d.account_name) {
           // We have enough info - create recurrence with auto-debit
           let accountId = undefined;
           if (d.account_name) {
@@ -1209,8 +1210,8 @@ export async function processCommand(input: string, history: string[] = [], inpu
           const missingInfo: string[] = [];
           if (!d.due_day) missingInfo.push('dia de vencimento');
           if (!d.amount && d.amount !== 0) missingInfo.push('valor (ou "variável" se muda todo mês)');
+          if (!d.account_name) missingInfo.push('banco');
 
-          const bankHint = d.account_name ? '' : '\n• Em qual banco?';
 
           return {
             intent: 'CONFIRMATION_REQUIRED' as IntentType,
@@ -1221,7 +1222,7 @@ export async function processCommand(input: string, history: string[] = [], inpu
               amount: d.amount,
               due_day: d.due_day
             },
-            message: `📝 Vou cadastrar "${d.search_term}" como débito automático. Me diz:\n\n• Qual o ${missingInfo.join(' e o ')}?${bankHint}\n\n💡 Exemplo: "Dia 10, uns 150 reais, no Itaú"`,
+            message: `📝 Vou cadastrar "${d.search_term}" como débito automático. Me diz:\n\n• Qual o ${missingInfo.join(', o ')}?\n\n💡 Exemplo: "Dia 10, uns 150 reais, no Itaú"`,
             confidence: 0.9
           };
         }
