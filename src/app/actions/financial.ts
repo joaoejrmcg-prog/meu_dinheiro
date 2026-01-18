@@ -401,7 +401,7 @@ export async function getRecurrences(): Promise<Recurrence[]> {
 
     const { data, error } = await supabase
         .from('recurrences')
-        .select('*')
+        .select('*, accounts(name)')
         .eq('user_id', user.id)
         .order('next_due_date', { ascending: true });
 
@@ -409,7 +409,12 @@ export async function getRecurrences(): Promise<Recurrence[]> {
         console.error("Error fetching recurrences:", error);
         return [];
     }
-    return data || [];
+
+    // Map to include account_name from the join
+    return (data || []).map(rec => ({
+        ...rec,
+        account_name: rec.accounts?.name
+    }));
 }
 
 export async function createRecurrence(params: {
@@ -421,6 +426,8 @@ export async function createRecurrence(params: {
     account_id?: string;
     category_id?: string;
     card_id?: string;
+    is_auto_debit?: boolean;
+    variable_amount?: boolean;
 }) {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
@@ -523,6 +530,355 @@ export async function findRecurrenceByDescription(searchTerm: string): Promise<{
         error: `Encontrei ${matches.length} recorrências com "${searchTerm}". Seja mais específico.`,
         multipleMatches: matches
     };
+}
+
+/**
+ * Mark an existing recurrence as auto-debit
+ * @returns Error if recurrence is on Carteira (wallet)
+ */
+export async function setAutoDebit(recurrenceId: string, isAutoDebit: boolean): Promise<{
+    success: boolean;
+    error?: string;
+    recurrence?: any;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    // Get recurrence first
+    const { data: recurrence, error: fetchError } = await supabase
+        .from('recurrences')
+        .select('*')
+        .eq('id', recurrenceId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (fetchError || !recurrence) {
+        return { success: false, error: "Recorrência não encontrada." };
+    }
+
+    // Check if account is wallet - DA doesn't make sense there
+    if (recurrence.account_id) {
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('type, name')
+            .eq('id', recurrence.account_id)
+            .single();
+
+        if (account?.type === 'wallet') {
+            return {
+                success: false,
+                error: `Débito automático não funciona na Carteira. Primeiro, associe "${recurrence.description}" a uma conta bancária.`
+            };
+        }
+    }
+
+    // Update recurrence
+    const { data: updated, error: updateError } = await supabase
+        .from('recurrences')
+        .update({ is_auto_debit: isAutoDebit })
+        .eq('id', recurrenceId)
+        .select()
+        .single();
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    return { success: true, recurrence: updated };
+}
+
+/**
+ * Find recurrence by description and check if it can be auto-debit
+ * Returns additional info about the account (name, isWallet)
+ */
+export async function findRecurrenceForAutoDebit(searchTerm: string): Promise<{
+    success: boolean;
+    recurrence?: any;
+    accountName?: string;
+    isWallet?: boolean;
+    error?: string;
+    notFound?: boolean;
+}> {
+    const result = await findRecurrenceByDescription(searchTerm);
+
+    if (!result.success) {
+        // Check if it's a "not found" vs other error (case-insensitive)
+        const errorLower = result.error?.toLowerCase() || '';
+        const notFound = errorLower.includes("não encontrei") || errorLower.includes("não tem nenhuma");
+        return {
+            success: false,
+            error: result.error,
+            notFound: notFound
+        };
+    }
+
+    // Get account details if recurrence has account_id
+    if (result.recurrence.account_id) {
+        const supabase = await getSupabase();
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('name, type')
+            .eq('id', result.recurrence.account_id)
+            .single();
+
+        return {
+            success: true,
+            recurrence: result.recurrence,
+            accountName: account?.name,
+            isWallet: account?.type === 'wallet'
+        };
+    }
+
+    // No account linked - need to ask which bank
+    return {
+        success: true,
+        recurrence: result.recurrence,
+        isWallet: false,
+        accountName: undefined
+    };
+}
+
+/**
+ * Update the amount for a recurrence when bill arrives
+ * DOES NOT create movement - just updates the recurrence value
+ * Movement is created on due date when payment actually happens
+ */
+export async function updateRecurrenceAmount(params: {
+    recurrenceId: string;
+    amount: number;
+}): Promise<{
+    success: boolean;
+    recurrence?: any;
+    accountName?: string;
+    error?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    // Get recurrence details
+    const { data: recurrence, error: recError } = await supabase
+        .from('recurrences')
+        .select('*')
+        .eq('id', params.recurrenceId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (recError || !recurrence) {
+        return { success: false, error: "Recorrência não encontrada." };
+    }
+
+    // Get account name for response
+    let accountName: string | undefined;
+    if (recurrence.account_id) {
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('name')
+            .eq('id', recurrence.account_id)
+            .single();
+        accountName = account?.name;
+    }
+
+    // Update only the amount in the recurrence
+    const { data: updated, error: updateError } = await supabase
+        .from('recurrences')
+        .update({ amount: params.amount })
+        .eq('id', params.recurrenceId)
+        .select()
+        .single();
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    console.log('[AUTO-DEBIT] Updated recurrence amount to:', params.amount);
+
+    return { success: true, recurrence: updated, accountName };
+}
+
+/**
+ * Register a payment for an auto-debit recurrence
+ * Creates a movement already marked as paid for the current month
+ * (Used when the due date arrives and bank actually debits)
+ */
+export async function registerAutoDebitPayment(params: {
+    recurrenceId: string;
+    amount: number;
+    date?: string;
+}): Promise<{
+    success: boolean;
+    movement?: any;
+    accountName?: string;
+    error?: string;
+    wasUpdated?: boolean;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    // Get recurrence details
+    const { data: recurrence, error: recError } = await supabase
+        .from('recurrences')
+        .select('*')
+        .eq('id', params.recurrenceId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (recError || !recurrence) {
+        return { success: false, error: "Recorrência não encontrada." };
+    }
+
+    // Get account name for response
+    let accountName: string | undefined;
+    if (recurrence.account_id) {
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('name')
+            .eq('id', recurrence.account_id)
+            .single();
+        accountName = account?.name;
+    }
+
+    // Use recurrence's due date for this month, not today's date
+    // This ensures the payment appears on the correct day in calendar
+    const today = new Date();
+    const recDueDate = new Date(recurrence.next_due_date);
+
+    // If due date is in current month, use it; otherwise use today
+    let paymentDate: string;
+    if (recDueDate.getMonth() === today.getMonth() && recDueDate.getFullYear() === today.getFullYear()) {
+        paymentDate = recurrence.next_due_date;
+    } else if (params.date) {
+        paymentDate = params.date;
+    } else {
+        // Calculate due date for current month
+        const dueDay = recDueDate.getDate();
+        paymentDate = new Date(today.getFullYear(), today.getMonth(), dueDay).toISOString().split('T')[0];
+    }
+
+    console.log('[AUTO-DEBIT] Using payment date:', paymentDate, 'from recurrence due:', recurrence.next_due_date);
+
+    // Calculate month range for duplicate check
+    const dateObj = new Date(paymentDate);
+    const monthStart = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1).toISOString().split('T')[0];
+    const monthEnd = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    console.log('[AUTO-DEBIT] Checking for existing movement:', {
+        description: recurrence.description,
+        monthStart,
+        monthEnd
+    });
+
+    // Check if movement already exists for this recurrence this month
+    const { data: existingMovements, error: searchError } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('user_id', user.id)
+        .ilike('description', recurrence.description)
+        .gte('date', monthStart)
+        .lte('date', monthEnd)
+        .limit(1);
+
+    const existingMovement = existingMovements && existingMovements.length > 0 ? existingMovements[0] : null;
+    console.log('[AUTO-DEBIT] Existing movement found:', existingMovement?.id || 'none');
+
+    if (existingMovement) {
+        // Update existing movement instead of creating new
+        const oldAmount = existingMovement.amount;
+        const { data: updated, error: updateError } = await supabase
+            .from('movements')
+            .update({ amount: params.amount })
+            .eq('id', existingMovement.id)
+            .select()
+            .single();
+
+        if (updateError) {
+            return { success: false, error: updateError.message };
+        }
+
+        // Update account balance (adjust for difference)
+        if (recurrence.account_id) {
+            const { data: account } = await supabase
+                .from('accounts')
+                .select('balance')
+                .eq('id', recurrence.account_id)
+                .single();
+
+            if (account) {
+                const difference = params.amount - oldAmount;
+                const newBalance = recurrence.type === 'expense'
+                    ? account.balance - difference
+                    : account.balance + difference;
+
+                await supabase
+                    .from('accounts')
+                    .update({ balance: newBalance })
+                    .eq('id', recurrence.account_id);
+            }
+        }
+
+        console.log('[AUTO-DEBIT] Updated existing movement to:', params.amount);
+        return { success: true, movement: updated, accountName, wasUpdated: true };
+    }
+
+    // Create new movement for this payment (already paid - auto-debit)
+    const { data: movement, error: movError } = await supabase
+        .from('movements')
+        .insert({
+            user_id: user.id,
+            description: recurrence.description,
+            amount: params.amount,
+            type: recurrence.type,
+            date: paymentDate,
+            due_date: paymentDate,
+            is_paid: true, // Auto-debit = already paid by bank
+            account_id: recurrence.account_id,
+            category_id: recurrence.category_id,
+            is_loan: false,
+            is_reserve: false,
+            is_reimbursement: false
+        })
+        .select()
+        .single();
+
+    if (movError) {
+        return { success: false, error: movError.message };
+    }
+
+    // Update account balance (subtract for expense, add for income)
+    if (recurrence.account_id) {
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('balance')
+            .eq('id', recurrence.account_id)
+            .single();
+
+        if (account) {
+            const newBalance = recurrence.type === 'expense'
+                ? account.balance - params.amount
+                : account.balance + params.amount;
+
+            await supabase
+                .from('accounts')
+                .update({ balance: newBalance })
+                .eq('id', recurrence.account_id);
+        }
+    }
+
+    // Advance recurrence to next month
+    const nextMonth = new Date(recDueDate);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const nextDueDateStr = nextMonth.toISOString().split('T')[0];
+
+    await supabase
+        .from('recurrences')
+        .update({ next_due_date: nextDueDateStr })
+        .eq('id', params.recurrenceId);
+
+    console.log('[AUTO-DEBIT] Advanced recurrence to next month:', nextDueDateStr);
+
+    return { success: true, movement, accountName };
 }
 
 // ============ SUMMARY ============
@@ -864,12 +1220,17 @@ export async function getCalendarMovements(month: number, year: number): Promise
         return [];
     }
 
-    // 2. Get active recurrences
-    const { data: recurrences } = await supabase
+    // 2. Get active recurrences (with account name join)
+    const { data: recurrencesRaw } = await supabase
         .from('recurrences')
-        .select('*')
+        .select('*, accounts(name)')
         .eq('user_id', user.id)
         .eq('active', true);
+
+    const recurrences = (recurrencesRaw || []).map(rec => ({
+        ...rec,
+        account_name: rec.accounts?.name
+    }));
 
     // Group by date
     const dateMap = new Map<string, CalendarDay>();
@@ -943,27 +1304,47 @@ export async function getCalendarMovements(month: number, year: number): Promise
 
             const day = dateMap.get(dateKey)!;
 
+            // For auto-debits: only show value in the NEXT due month, not in future months
+            // Compare viewing month with the recurrence's next_due_date month
+            const nextDueMonth = nextDueDate.getMonth(); // 0-indexed
+            const nextDueYear = nextDueDate.getFullYear();
+            const isNextDueMonth = (month - 1 === nextDueMonth && year === nextDueYear);
+
+            // Determine display amount based on variable_amount flag:
+            // - variable_amount = FALSE (fixed): always show the stored amount
+            // - variable_amount = TRUE (variable): show 0 in future months until user informs
+            let displayAmount: number;
+            if (rec.is_auto_debit && rec.variable_amount && !isNextDueMonth) {
+                // Variable amount DA in future month - show 0 until bill arrives
+                displayAmount = 0;
+            } else {
+                // Fixed amount (repeats every month) or current month
+                displayAmount = rec.amount || 0;
+            }
+
             // Create a virtual movement from recurrence
             const virtualMovement: any = {
                 id: `rec-${rec.id}`,
-                description: `🔄 ${rec.description}`,
-                amount: rec.amount || 0,
+                description: rec.is_auto_debit ? `⚡ ${rec.description}` : `🔄 ${rec.description}`,
+                amount: displayAmount,
                 type: rec.type,
                 date: dateKey,
                 due_date: dateKey,
                 is_paid: false,
                 is_recurrence: true,
-                recurrence_id: rec.id
+                recurrence_id: rec.id,
+                is_auto_debit: rec.is_auto_debit || false,
+                account_name: rec.account_name
             };
 
             day.movements.push(virtualMovement);
 
             if (rec.type === 'income') {
                 day.hasIncome = true;
-                day.incomeTotal += rec.amount || 0;
+                day.incomeTotal += displayAmount;
             } else if (rec.type === 'expense') {
                 day.hasExpense = true;
-                day.expenseTotal += rec.amount || 0;
+                day.expenseTotal += displayAmount;
             }
         }
     });

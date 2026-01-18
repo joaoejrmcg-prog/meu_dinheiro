@@ -278,6 +278,41 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`search_term\`: Nome da recorrência a ser cancelada.
    - **Ação**: Busca e desativa a recorrência correspondente.
 
+12. **SET_AUTO_DEBIT** (Criar/marcar débito automático) ⚠️ PRIORIDADE ALTA
+   - **QUANDO USAR**: Quando o usuário menciona "débito automático", "DA", "debita automático", ou diz que o banco paga sozinho.
+   - **Gatilhos**:
+     - "X é débito automático"
+     - "Coloca X em débito automático"
+     - "débito automático"
+     - "X de Y reais dia Z, débito automático"
+   - **Exemplos**:
+     - "Conta de luz de 150 dia 10, débito automático" → SET_AUTO_DEBIT, search_term: "luz", amount: 150, due_day: 10
+     - "Condomínio de 800 reais, débito automático no Itaú" → SET_AUTO_DEBIT, search_term: "condomínio", amount: 800, account_name: "Itaú"
+     - "A conta de água é débito automático" → SET_AUTO_DEBIT, search_term: "água"
+   - **Slots**:
+     - \`search_term\`: Nome da conta (OBRIGATÓRIO).
+     - \`amount\`: Valor (OPCIONAL - se não informado, é conta variável).
+     - \`due_day\`: Dia do vencimento (OPCIONAL se já existe recorrência).
+     - \`account_name\`: Banco do débito (OPCIONAL).
+   - **Ação**: Cria ou atualiza recorrência com is_auto_debit = true.
+
+13. **CHECK_AUTO_DEBIT** (Verificar se é débito automático)
+   - **QUANDO USAR**: Quando o usuário pergunta se algo é débito automático.
+   - **Gatilhos**:
+     - "X é débito automático?"
+     - "Minha conta de X é débito automático?"
+   - **Slots**:
+     - \`search_term\`: O que verificar.
+   - **Ação**: Busca recorrência e informa se is_auto_debit é true ou false.
+
+14. **LIST_AUTO_DEBITS** (Listar todos os débitos automáticos)
+   - **QUANDO USAR**: Quando o usuário quer saber quais contas estão em DA.
+   - **Gatilhos**:
+     - "Quais são meus débitos automáticos?"
+     - "Lista os débitos automáticos"
+     - "O que está em débito automático?"
+   - **Ação**: Busca todas as recorrências com is_auto_debit = true e lista.
+
 ### REGRAS CRÍTICAS DE SLOT-FILLING (LEIA COM ATENÇÃO):
 
 Ao receber o CONTEXTO DA CONVERSA, você DEVE usar as informações já fornecidas.
@@ -968,12 +1003,40 @@ export async function processCommand(input: string, history: string[] = [], inpu
           finalMessage = `❌ ${updateResult.error}`;
         }
       } else {
-        finalMessage = `❌ ${findResult.error}`;
+        // Not found as pending movement - check if it's an auto-debit recurrence
+        const { findRecurrenceByDescription, updateRecurrenceAmount } = await import('./financial');
+        const recResult = await findRecurrenceByDescription(d.search_term);
+
+        if (recResult.success && recResult.recurrence && recResult.recurrence.is_auto_debit) {
+          // It's an auto-debit recurrence - just update the amount for this month
+          // DO NOT create a movement yet - that happens when user confirms payment on due date
+          const updateResult = await updateRecurrenceAmount({
+            recurrenceId: recResult.recurrence.id,
+            amount: d.amount
+          });
+
+          if (updateResult.success) {
+            const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            // Parse date correctly to avoid timezone issues
+            const [year, month, day] = recResult.recurrence.next_due_date.split('-');
+            const dueDateStr = `${day}/${month}`;
+            const accountText = updateResult.accountName ? ` no ${updateResult.accountName}` : '';
+            finalMessage = `✅ Anotado! "${recResult.recurrence.description}" de ${formattedAmount}${accountText} vence dia ${dueDateStr}. No dia, vou te perguntar se o débito aconteceu.`;
+          } else {
+            finalMessage = `❌ ${updateResult.error}`;
+          }
+        } else if (recResult.success && recResult.recurrence) {
+          // Recurrence exists but is not auto-debit
+          finalMessage = `📝 "${recResult.recurrence.description}" não está configurada como débito automático. Quer que eu marque como paga?`;
+        } else {
+          finalMessage = `❌ ${findResult.error}`;
+        }
       }
     } else {
       finalMessage = `❌ Preciso saber qual conta e o valor. Tente: "Chegou a conta de luz de 180".`;
     }
   }
+
 
   // Handle CREATE_RECURRENCE - create a recurring bill/income
   if (parsedResponse.intent === 'CREATE_RECURRENCE') {
@@ -1037,6 +1100,183 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
     } else {
       finalMessage = `❌ Não entendi qual recorrência você quer cancelar. Tente: "Cancela o aluguel".`;
+    }
+  }
+
+  // Handle SET_AUTO_DEBIT - create or mark recurrence as auto-debit
+  if (parsedResponse.intent === 'SET_AUTO_DEBIT') {
+    const d = parsedResponse.data;
+    if (d.search_term) {
+      const { findRecurrenceForAutoDebit, setAutoDebit, createRecurrence } = await import('./financial');
+      const { getAccountByName } = await import('./assets');
+
+      // If user specified bank, validate it exists
+      if (d.account_name) {
+        const account = await getAccountByName(d.account_name);
+        if (!account) {
+          finalMessage = `❌ Não encontrei a conta "${d.account_name}". Primeiro crie a conta dizendo: "Criar conta no ${d.account_name}"`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
+
+      const findResult = await findRecurrenceForAutoDebit(d.search_term);
+
+      if (findResult.success && findResult.recurrence) {
+        // Recurrence exists - check if wallet
+        if (findResult.isWallet) {
+          finalMessage = `⚠️ "${findResult.recurrence.description}" está na Carteira. Débito automático só funciona em contas bancárias.\n\n💡 Me diga em qual banco você quer registrar, ex: "no Itaú" ou "no Nubank"`;
+        } else if (!findResult.accountName && !d.account_name) {
+          // Recurrence exists but no bank linked - ask for bank
+          finalMessage = `📝 "${findResult.recurrence.description}" está cadastrada, mas sem conta bancária. Em qual banco é o débito automático?`;
+        } else {
+          // Has bank (either existing or provided in slot-filling)
+          let bankNameToShow = findResult.accountName;
+
+          // If user provided account_name in slot-filling, link it
+          if (d.account_name && !findResult.recurrence.account_id) {
+            const account = await getAccountByName(d.account_name);
+            if (account) {
+              bankNameToShow = account.name;
+              // Update recurrence with the account
+              const { updateRecurrence } = await import('./financial');
+              await updateRecurrence(findResult.recurrence.id, { account_id: account.id });
+            }
+          }
+
+          // Mark as auto-debit
+          const result = await setAutoDebit(findResult.recurrence.id, true);
+          if (result.success) {
+            const bankName = bankNameToShow ? ` no ${bankNameToShow}` : '';
+            finalMessage = `✅ Pronto! "${findResult.recurrence.description}"${bankName} agora é débito automático. Quando chegar o dia, o valor sai sozinho da conta.`;
+          } else {
+            finalMessage = `❌ ${result.error}`;
+          }
+        }
+      } else if (findResult.notFound) {
+        // Recurrence doesn't exist - check if we have enough info to create
+        if (d.due_day && (d.amount || d.amount === 0)) {
+          // We have enough info - create recurrence with auto-debit
+          let accountId = undefined;
+          if (d.account_name) {
+            const account = await getAccountByName(d.account_name);
+            if (account) accountId = account.id;
+          }
+
+          // Calculate next due date
+          const now = new Date();
+          const currentDay = now.getDate();
+          let nextDueDate: Date;
+
+          if (d.due_day > currentDay) {
+            nextDueDate = new Date(now.getFullYear(), now.getMonth(), d.due_day);
+          } else {
+            nextDueDate = new Date(now.getFullYear(), now.getMonth() + 1, d.due_day);
+          }
+
+          const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+          const description = d.search_term.charAt(0).toUpperCase() + d.search_term.slice(1);
+
+          try {
+            // If amount is provided, it's fixed (variable_amount = false)
+            // If no amount, it varies each month (variable_amount = true)
+            const hasFixedAmount = d.amount && d.amount > 0;
+            const newRec = await createRecurrence({
+              description: description,
+              amount: d.amount || 0,
+              type: 'expense',
+              frequency: 'monthly',
+              next_due_date: nextDueDateStr,
+              account_id: accountId,
+              is_auto_debit: true,
+              variable_amount: !hasFixedAmount
+            });
+
+            const amountText = hasFixedAmount ? ` de R$ ${d.amount.toLocaleString('pt-BR')}` : '';
+            const bankText = d.account_name ? ` no ${d.account_name}` : '';
+            const fixedTip = hasFixedAmount ? ' O valor vai se repetir todo mês.' : '';
+            const variableTip = !hasFixedAmount ? `\n\n💡 Quando a conta chegar, me diga o valor: "A ${d.search_term} veio X reais"` : '';
+            finalMessage = `✅ Cadastrado! "${newRec.description}"${amountText} todo dia ${d.due_day}${bankText} como débito automático.${fixedTip}${variableTip}`;
+          } catch (e: any) {
+            finalMessage = `❌ Erro ao criar recorrência: ${e.message}`;
+          }
+        } else {
+          // Need slot-filling - ask for missing info
+          const missingInfo: string[] = [];
+          if (!d.due_day) missingInfo.push('dia de vencimento');
+          if (!d.amount && d.amount !== 0) missingInfo.push('valor (ou "variável" se muda todo mês)');
+
+          const bankHint = d.account_name ? '' : '\n• Em qual banco?';
+
+          return {
+            intent: 'CONFIRMATION_REQUIRED' as IntentType,
+            data: {
+              pendingAutoDebit: true,
+              search_term: d.search_term,
+              account_name: d.account_name,
+              amount: d.amount,
+              due_day: d.due_day
+            },
+            message: `📝 Vou cadastrar "${d.search_term}" como débito automático. Me diz:\n\n• Qual o ${missingInfo.join(' e o ')}?${bankHint}\n\n💡 Exemplo: "Dia 10, uns 150 reais, no Itaú"`,
+            confidence: 0.9
+          };
+        }
+      } else {
+        finalMessage = `❌ ${findResult.error}`;
+      }
+    } else {
+      finalMessage = `❌ Qual conta você quer marcar como débito automático? Tente: "A conta de luz é débito automático".`;
+    }
+  }
+
+  // Handle CHECK_AUTO_DEBIT - check if a recurrence is auto-debit
+  if (parsedResponse.intent === 'CHECK_AUTO_DEBIT') {
+    const d = parsedResponse.data;
+    if (d.search_term) {
+      const { findRecurrenceByDescription } = await import('./financial');
+      const findResult = await findRecurrenceByDescription(d.search_term);
+
+      if (findResult.success && findResult.recurrence) {
+        const rec = findResult.recurrence;
+        if (rec.is_auto_debit) {
+          const [year, month, day] = rec.next_due_date.split('-');
+          const dueDateStr = `${day}/${month}`;
+          const amountStr = rec.amount > 0
+            ? ` de ${rec.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+            : '';
+          finalMessage = `✅ Sim! "${rec.description}"${amountStr} está em débito automático. Próximo vencimento: ${dueDateStr}.`;
+        } else {
+          finalMessage = `❌ Não. "${rec.description}" NÃO está em débito automático. Quer que eu configure? Diga: "Coloca ${d.search_term} em débito automático".`;
+        }
+      } else {
+        finalMessage = `📝 Não encontrei nenhuma conta recorrente com "${d.search_term}". Você pode criar uma dizendo: "Minha conta de ${d.search_term} é débito automático, todo dia X".`;
+      }
+    } else {
+      finalMessage = `❌ Qual conta você quer verificar? Tente: "Minha conta de água é débito automático?"`;
+    }
+  }
+
+  // Handle LIST_AUTO_DEBITS - list all auto-debit accounts
+  if (parsedResponse.intent === 'LIST_AUTO_DEBITS') {
+    const { getRecurrences } = await import('./financial');
+    const recurrences = await getRecurrences();
+    const autoDebits = recurrences.filter(r => r.is_auto_debit && r.active);
+
+    if (autoDebits.length === 0) {
+      finalMessage = `📝 Você não tem nenhuma conta em débito automático cadastrada ainda.\n\n💡 Para criar, diga: "A conta de luz é débito automático no Itaú"`;
+    } else {
+      const list = autoDebits.map(ad => {
+        const amountStr = ad.amount > 0
+          ? ` (${ad.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`
+          : ' (variável)';
+        const accountStr = ad.account_name ? ` → ${ad.account_name}` : '';
+        return `• ${ad.description}${amountStr}${accountStr}`;
+      }).join('\n');
+      finalMessage = `⚡ Suas contas em débito automático:\n\n${list}`;
     }
   }
 
