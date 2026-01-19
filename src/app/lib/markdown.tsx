@@ -10,7 +10,7 @@ export function formatMarkdown(text: string): React.ReactNode {
         <span className="whitespace-pre-wrap">
             {parts.map((part, index) => {
                 if (part.startsWith('**') && part.endsWith('**')) {
-                    return <strong key={index} className="font-bold text-white">{part.slice(2, -2)}</strong>;
+                    return <strong key={index} className="font-bold" style={{ color: 'var(--light-text-primary)' }}>{part.slice(2, -2)}</strong>;
                 }
                 return part;
             })}

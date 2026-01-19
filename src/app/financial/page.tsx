@@ -873,6 +873,11 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
                                 <p className="text-xs text-neutral-500">
                                     {rec.frequency === 'monthly' ? 'Mensal' : rec.frequency === 'weekly' ? 'Semanal' : 'Anual'}
                                     {' • '}Próximo: {new Date(rec.next_due_date).toLocaleDateString('pt-BR')}
+                                    {rec.is_auto_debit && (
+                                        <span className="ml-2 px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px]">
+                                            ⚡ DA{rec.account_name ? ` • ${rec.account_name}` : ''}
+                                        </span>
+                                    )}
                                     {rec.card_id && <span className="ml-2 px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[10px]">Cartão</span>}
                                 </p>
                             </div>

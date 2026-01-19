@@ -1,19 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, X, Check, Calendar } from "lucide-react";
+import { AlertTriangle, X, Check, Calendar, CreditCard } from "lucide-react";
 import {
     getUpcomingPayments,
     createPaymentNotifications,
     getNegativeAccounts,
     createNegativeBalanceNotifications,
     createNegativeBalanceNotificationRealtime,
-    type PendingPayment
+    getPendingAutoDebits,
+    confirmAutoDebit,
+    type PendingPayment,
+    type PendingAutoDebit
 } from "../actions/reminders";
 import { supabase } from "../lib/supabase";
 
 export default function PaymentReminder() {
     const [payments, setPayments] = useState<PendingPayment[]>([]);
+    const [autoDebits, setAutoDebits] = useState<PendingAutoDebit[]>([]);
     const [dismissed, setDismissed] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
 
@@ -48,6 +52,10 @@ export default function PaymentReminder() {
             const data = await getUpcomingPayments();
             setPayments(data);
 
+            // Load pending auto-debits
+            const autoDebitData = await getPendingAutoDebits();
+            setAutoDebits(autoDebitData);
+
             // Create notifications for pending payments
             if (data.length > 0) {
                 await createPaymentNotifications(data);
@@ -73,7 +81,9 @@ export default function PaymentReminder() {
     };
 
     const handleDismissAll = () => {
-        const allIds = payments.map(p => p.id);
+        const paymentIds = payments.map(p => p.id);
+        const autoDebitIds = autoDebits.map(ad => ad.id);
+        const allIds = [...paymentIds, ...autoDebitIds];
         const newDismissed = new Set([...dismissed, ...allIds]);
         setDismissed(newDismissed);
         sessionStorage.setItem('dismissedReminders', JSON.stringify([...newDismissed]));
@@ -130,23 +140,48 @@ export default function PaymentReminder() {
         }
     };
 
-    // Filter out dismissed payments
-    const visiblePayments = payments.filter(p => !dismissed.has(p.id));
+    const handleConfirmAutoDebit = async (autoDebit: PendingAutoDebit) => {
+        try {
+            const result = await confirmAutoDebit(autoDebit.id);
+            if (result.success) {
+                // Refresh list
+                loadPayments();
 
-    if (loading || visiblePayments.length === 0) {
+                // Dispatch event to refresh dashboard
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                }
+            } else {
+                console.error('Error confirming auto-debit:', result.error);
+            }
+        } catch (error) {
+            console.error('Error confirming auto-debit:', error);
+        }
+    };
+
+    // Filter out dismissed items
+    const visiblePayments = payments.filter(p => !dismissed.has(p.id));
+    const visibleAutoDebits = autoDebits.filter(ad => !dismissed.has(ad.id));
+
+    const totalItems = visiblePayments.length + visibleAutoDebits.length;
+
+    if (loading || totalItems === 0) {
         return null;
     }
 
     const overduePayments = visiblePayments.filter(p => p.type === 'overdue');
     const tomorrowPayments = visiblePayments.filter(p => p.type === 'tomorrow');
+    const dueAutoDebits = visibleAutoDebits.filter(ad => ad.type === 'due_today');
+    const missingValueAutoDebits = visibleAutoDebits.filter(ad => ad.type === 'missing_value');
 
     const formatAmount = (amount: number) => {
         return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     };
 
     const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr + 'T12:00:00');
-        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        // Parse directly from string to avoid timezone issues
+        const [year, month, day] = dateStr.split('-');
+        return `${day}/${month}`;
     };
 
     return (
@@ -157,7 +192,7 @@ export default function PaymentReminder() {
                     <div className="flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-amber-400" />
                         <span className="font-medium text-amber-200">
-                            {visiblePayments.length} {visiblePayments.length === 1 ? 'conta' : 'contas'} {visiblePayments.length === 1 ? 'precisa' : 'precisam'} de atenção
+                            {totalItems} {totalItems === 1 ? 'item precisa' : 'itens precisam'} de atenção
                         </span>
                     </div>
                     <button
@@ -238,6 +273,79 @@ export default function PaymentReminder() {
                                 </button>
                                 <button
                                     onClick={() => handleDismiss(payment.id)}
+                                    className="px-2 py-1 bg-neutral-500/20 hover:bg-neutral-500/30 text-neutral-400 rounded-lg transition-colors text-xs"
+                                    title="Lembrar depois"
+                                >
+                                    Depois
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Auto-debits ready to confirm */}
+                    {dueAutoDebits.map(autoDebit => (
+                        <div
+                            key={autoDebit.id}
+                            className="flex items-center justify-between bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2"
+                        >
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+                                    <span className="text-blue-400 text-xs font-medium">
+                                        DÉBITO AUTOMÁTICO
+                                    </span>
+                                    <span className="text-neutral-200 truncate">
+                                        {autoDebit.description}
+                                    </span>
+                                </div>
+                                <div className="text-sm text-neutral-400">
+                                    {formatAmount(autoDebit.amount)} · debitado dia {formatDate(autoDebit.next_due_date)}
+                                    {autoDebit.account_name && ` no ${autoDebit.account_name}`}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1 ml-2">
+                                <button
+                                    onClick={() => handleConfirmAutoDebit(autoDebit)}
+                                    className="px-2 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
+                                    title="Confirmar débito"
+                                >
+                                    <Check className="w-3.5 h-3.5" />
+                                    Confirmar
+                                </button>
+                                <button
+                                    onClick={() => handleDismiss(autoDebit.id)}
+                                    className="px-2 py-1 bg-neutral-500/20 hover:bg-neutral-500/30 text-neutral-400 rounded-lg transition-colors text-xs"
+                                    title="Ainda não"
+                                >
+                                    Ainda não
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Auto-debits missing value */}
+                    {missingValueAutoDebits.map(autoDebit => (
+                        <div
+                            key={autoDebit.id}
+                            className="flex items-center justify-between bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2"
+                        >
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <CreditCard className="w-3.5 h-3.5 text-purple-400" />
+                                    <span className="text-purple-400 text-xs font-medium">
+                                        VALOR PENDENTE
+                                    </span>
+                                    <span className="text-neutral-200 truncate">
+                                        {autoDebit.description}
+                                    </span>
+                                </div>
+                                <div className="text-sm text-neutral-400">
+                                    Vence dia {formatDate(autoDebit.next_due_date)} · Chegou a conta?
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1 ml-2">
+                                <button
+                                    onClick={() => handleDismiss(autoDebit.id)}
                                     className="px-2 py-1 bg-neutral-500/20 hover:bg-neutral-500/30 text-neutral-400 rounded-lg transition-colors text-xs"
                                     title="Lembrar depois"
                                 >

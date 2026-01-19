@@ -81,10 +81,7 @@ function HomeContent() {
     <div className="h-full flex flex-col items-center max-w-4xl mx-auto w-full px-4" style={{ background: 'var(--light-background)' }}>
       <Confetti trigger={showConfetti} onComplete={() => setShowConfetti(false)} />
 
-      {/* Título - margem pequena acima e abaixo */}
-      <h1 className="text-2xl font-bold tracking-tight text-center flex-shrink-0 my-1" style={{ color: 'var(--light-text-primary)' }}>
-        Meu Dinheiro IA
-      </h1>
+
 
       <div className="w-full flex-1 flex flex-col relative overflow-hidden min-h-0 pb-2">
 

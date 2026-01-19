@@ -313,11 +313,99 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "O que está em débito automático?"
    - **Ação**: Busca todas as recorrências com is_auto_debit = true e lista.
 
+15. **CREATE_INSTALLMENT** (Compra parcelada / Crediário / Carnê) ⚠️ PRIORIDADE ALTA
+   - **QUANDO USAR**: Quando o usuário menciona "parcelado", "em X vezes", "carnê", "crediário", ou faz uma compra com entrada+resto.
+   - **DETECÇÃO DE PARCELAMENTO IMPLÍCITO (CRÍTICO)**:
+     - Se detectar "me deu/paguei X" + "resto/falta/vai pagar" → É parcelamento com entrada implícita.
+     - "dei 50 de entrada" → hasDownPayment=true, downPaymentValue=50
+     - "o resto" / "vai pagar depois" / "falta" → indica valor pendente.
+     - Neste caso, defina installments=2 (entrada + resto) se não especificar quantidade.
+   - **SLOTS OBRIGATÓRIOS**: Se detectar parcelamento, GARANTA que tem TODOS estes dados. Se faltar QUALQUER UM, retorne intent="CONFIRMATION_REQUIRED" perguntando APENAS o que falta:
+     **CRÍTICO:** No JSON de resposta, você DEVE incluir o objeto \`data\` com TODOS os campos já identificados (acumulados).
+     **CRÍTICO:** Para \`hasDownPayment\`, PERGUNTE: "Foi com ou sem entrada?" (Evite perguntas Sim/Não).
+     **REGRA DE DEPENDÊNCIA:** Se \`hasDownPayment\` for true, \`downPaymentValue\` torna-se OBRIGATÓRIO.
+     **CRÍTICO:** \`dueDate\` é OBRIGATÓRIO para parcelamentos. NÃO assuma "hoje". PERGUNTE.
+     1. \`description\` (O que comprou?)
+     2. \`amount\` (Valor TOTAL - se usuário disse "o resto", pergunte o valor total)
+     3. \`installments\` (Quantas vezes?)
+     4. \`hasDownPayment\` (Teve entrada? true/false)
+     5. \`downPaymentValue\` (Valor da entrada, OBRIGATÓRIO se hasDownPayment=true)
+     6. \`dueDate\` (Data da primeira parcela/vencimento - formato YYYY-MM-DD)
+     7. \`store\` (OPCIONAL - onde comprou)
+   - **Gatilhos**:
+     - "Comprei X em Y vezes"
+     - "Parcelei X em Y vezes"
+     - "Comprei X no carnê"
+     - "X parcelado em Y vezes"
+     - "Dei entrada de X e o resto em Y vezes"
+   - **Exemplos**:
+     - "Comprei TV de 2500 em 10x" → CONFIRMATION_REQUIRED perguntando dueDate e hasDownPayment
+     - "Parcelei geladeira em 12x de 150" → amount=1800, installments=12, perguntar dueDate e hasDownPayment
+     - "Comprei sapato de 180, dei entrada de 80, resto em 2x dia 10/02" → CREATE_INSTALLMENT, amount=180, installments=3, hasDownPayment=true, downPaymentValue=80, dueDate="2026-02-10"
+   - **CÁLCULO**: Valor da parcela = (totalAmount - downPaymentValue) / (installments - 1 se tiver entrada, senão installments)
+   - **Exemplo de Fluxo COMPLETO**:
+     User: "Comprei uma TV de 3000 em 10x nas Casas Bahia"
+     AI: { intent: "CONFIRMATION_REQUIRED", message: "Certo! TV de R$3.000 em 10x nas Casas Bahia. Foi com ou sem entrada?", data: { originalIntent: "CREATE_INSTALLMENT", description: "TV", amount: 3000, installments: 10, store: "Casas Bahia" } }
+     User: "Sem entrada"
+     AI: { intent: "CONFIRMATION_REQUIRED", message: "E qual a data do primeiro vencimento?", data: { originalIntent: "CREATE_INSTALLMENT", description: "TV", amount: 3000, installments: 10, store: "Casas Bahia", hasDownPayment: false } }
+     User: "Dia 20 de fevereiro"
+     AI: { intent: "CREATE_INSTALLMENT", data: { description: "TV", amount: 3000, installments: 10, store: "Casas Bahia", hasDownPayment: false, downPaymentValue: 0, dueDate: "2026-02-20" }, message: "✅ Registrado! TV parcelada em 10x de R$300, primeiro vencimento em 20/02/2026." }
+
+16. **CREDIT_CARD_PURCHASE** (Compra no cartão de crédito) ⚠️ PRIORIDADE ALTA
+   - **QUANDO USAR**: Quando o usuário menciona "no cartão", "no crédito", "cartão de crédito", ou menciona um nome de cartão específico (Nubank, Itaú, etc).
+   - **IMPORTANTE**: Compras no cartão NÃO têm entrada e NÃO pedem data (a data é calculada automaticamente pelo fechamento/vencimento do cartão).
+   - **SLOTS OBRIGATÓRIOS**: 
+     1. \`description\` (O que comprou?)
+     2. \`amount\` (Valor)
+     3. \`installments\` (Quantas vezes? Use 1 se não mencionou parcelamento)
+     4. \`card_name\` (OPCIONAL - nome do cartão. Se não especificado, usa o cartão principal)
+   - **Gatilhos**:
+     - "Comprei X no cartão"
+     - "Gastei X no crédito"
+     - "Paguei X no cartão"
+     - "Comprei X em Yx no cartão"
+     - "Comprei X no Nubank" (nome do cartão)
+     - "X no crédito do Itaú"
+   - **Exemplos**:
+     - "Comprei uma janta de 120 no cartão" → CREDIT_CARD_PURCHASE, description: "janta", amount: 120, installments: 1
+     - "Gastei 500 no cartão em 5x" → CREDIT_CARD_PURCHASE, description: "compra", amount: 500, installments: 5
+     - "Paguei o tênis de 350 no Nubank" → CREDIT_CARD_PURCHASE, description: "tênis", amount: 350, installments: 1, card_name: "Nubank"
+     - "Comprei geladeira de 3000 em 10x no cartão" → CREDIT_CARD_PURCHASE, description: "geladeira", amount: 3000, installments: 10
+   - **NÃO PERGUNTE**:
+     - Se teve entrada (cartão nunca tem)
+     - Data de vencimento (é calculada automaticamente)
+   - **PERGUNTE APENAS SE FALTAR**:
+     - O que comprou (description)
+     - Valor (amount)
+   - **DISTINÇÃO IMPORTANTE** (Cartão x Carnê):
+     - "Comprei em 10x no cartão" → CREDIT_CARD_PURCHASE
+     - "Comprei em 10x no carnê" → CREATE_INSTALLMENT (pede data e entrada)
+     - "Parcelei nas Casas Bahia" → CREATE_INSTALLMENT (crediário de loja)
+
 ### REGRAS CRÍTICAS DE SLOT-FILLING (LEIA COM ATENÇÃO):
 
 Ao receber o CONTEXTO DA CONVERSA, você DEVE usar as informações já fornecidas.
 
-**EXEMPLO CORRETO:**
+**REGRA CRÍTICA PARA PARCELAMENTOS** ⚠️:
+Se no histórico recente você (IA) fez uma pergunta sobre parcelamento (entrada, valor da entrada, data de vencimento), e o usuário respondeu APENAS com um número ou uma resposta curta, **CONTINUE O FLUXO DE PARCELAMENTO**:
+- Recupere TODOS os dados já fornecidos do histórico (description, amount, installments, etc.).
+- Adicione a nova informação ao slot correto.
+- Se ainda faltar algum slot obrigatório, pergunte APENAS o que falta.
+- NÃO registre como movimento avulso! Use CONFIRMATION_REQUIRED até ter TODOS os dados.
+
+**EXEMPLO COMPLETO DE FLUXO CREATE_INSTALLMENT:**
+1. User: "Comprei uma TV de 3000 em 10x"
+   AI: { intent: "CONFIRMATION_REQUIRED", message: "Certo! TV de R$3.000 em 10x. Foi com ou sem entrada?", data: { originalIntent: "CREATE_INSTALLMENT", description: "TV", amount: 3000, installments: 10 } }
+2. User: "com entrada"
+   AI: { intent: "CONFIRMATION_REQUIRED", message: "Qual foi o valor da entrada?", data: { originalIntent: "CREATE_INSTALLMENT", description: "TV", amount: 3000, installments: 10, hasDownPayment: true } }
+3. User: "1200"
+   **CORRETO**: AI recupera do histórico que é parcelamento, adiciona downPaymentValue=1200, e pergunta o que falta:
+   AI: { intent: "CONFIRMATION_REQUIRED", message: "Entrada de R$1.200. E qual a data do primeiro vencimento?", data: { originalIntent: "CREATE_INSTALLMENT", description: "TV", amount: 3000, installments: 10, hasDownPayment: true, downPaymentValue: 1200 } }
+   **ERRADO**: Registrar como movimento avulso de R$1200! ❌
+4. User: "dia 20 de fevereiro"
+   AI: { intent: "CREATE_INSTALLMENT", data: { description: "TV", amount: 3000, installments: 10, hasDownPayment: true, downPaymentValue: 1200, dueDate: "2026-02-20" }, message: "✅ Parcelamento registrado! TV de R$3.000 com entrada de R$1.200 e 9x de R$200, primeiro vencimento em 20/02/2026." }
+
+**EXEMPLO CORRETO (Movimento Avulso):**
 - Usuário: "Vendi um jogo de cadeiras antigas e vou receber dia 25"
 - IA pergunta: "Qual o valor?"
 - Usuário responde: "120"
@@ -1100,6 +1188,123 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
     } else {
       finalMessage = `❌ Não entendi qual recorrência você quer cancelar. Tente: "Cancela o aluguel".`;
+    }
+  }
+
+  // Handle CREATE_INSTALLMENT - create installment purchase (carnê/crediário)
+  if (parsedResponse.intent === 'CREATE_INSTALLMENT') {
+    const d = parsedResponse.data;
+
+    // Validate required fields
+    if (!d.description || !d.amount || !d.installments || !d.dueDate || d.hasDownPayment === undefined) {
+      // Missing required data - this shouldn't happen as AI should ask via CONFIRMATION_REQUIRED
+      finalMessage = `❌ Faltam dados para o parcelamento. Me diga o que comprou, valor total, quantas parcelas, se teve entrada e quando vence a primeira.`;
+    } else {
+      const { createInstallmentPurchase } = await import('./financial');
+
+      const result = await createInstallmentPurchase({
+        description: d.description,
+        totalAmount: d.amount,
+        installments: d.installments,
+        hasDownPayment: d.hasDownPayment,
+        downPaymentValue: d.downPaymentValue || 0,
+        firstDueDate: d.dueDate,
+        store: d.store,
+        type: d.type || 'expense'
+      });
+
+      if (result.success && result.movements) {
+        const installmentValue = d.hasDownPayment
+          ? Math.round((d.amount - (d.downPaymentValue || 0)) / (d.installments - 1) * 100) / 100
+          : Math.round(d.amount / d.installments * 100) / 100;
+
+        const formattedInstallment = installmentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const formattedTotal = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const storeText = d.store ? ` (${d.store})` : '';
+
+        // Format due date for display
+        const [year, month, day] = d.dueDate.split('-');
+        const dueDateDisplay = `${day}/${month}/${year}`;
+
+        if (d.hasDownPayment && d.downPaymentValue > 0) {
+          const formattedEntry = d.downPaymentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const remainingInstallments = d.installments - 1;
+          finalMessage = `✅ Parcelamento registrado!${storeText}\n\n📦 **${d.description}**: ${formattedTotal}\n💵 Entrada: ${formattedEntry}\n📅 ${remainingInstallments}x de ${formattedInstallment} (1ª parcela: ${dueDateDisplay})`;
+        } else {
+          finalMessage = `✅ Parcelamento registrado!${storeText}\n\n📦 **${d.description}**: ${formattedTotal}\n📅 ${d.installments}x de ${formattedInstallment} (1ª parcela: ${dueDateDisplay})`;
+        }
+      } else {
+        finalMessage = `❌ Erro ao criar parcelamento: ${result.error}`;
+      }
+    }
+  }
+
+  // Handle CREDIT_CARD_PURCHASE - single or installment purchase on credit card
+  if (parsedResponse.intent === 'CREDIT_CARD_PURCHASE') {
+    const d = parsedResponse.data;
+
+    // Validate required fields
+    if (!d.description || !d.amount) {
+      finalMessage = `❌ Faltam dados. Me diga o que comprou e o valor.`;
+    } else {
+      const { createCreditCardPurchase } = await import('./financial');
+      const { getDefaultCard, getCardByName } = await import('./assets');
+
+      // Get card - either by name or default
+      let card = null;
+      if (d.card_name) {
+        card = await getCardByName(d.card_name);
+        if (!card) {
+          finalMessage = `❌ Não encontrei o cartão "${d.card_name}". Você já cadastrou ele?`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      } else {
+        card = await getDefaultCard();
+        if (!card) {
+          finalMessage = `❌ Você não tem nenhum cartão cadastrado. Cadastre um cartão primeiro no tutorial ou me diga: "Quero cadastrar um cartão"`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
+
+      const result = await createCreditCardPurchase({
+        description: d.description,
+        amount: d.amount,
+        installments: d.installments || 1,
+        cardId: card.id
+      });
+
+      if (result.success && result.movements) {
+        const installments = d.installments || 1;
+        const installmentValue = Math.round((d.amount / installments) * 100) / 100;
+        const formattedInstallment = installmentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const formattedTotal = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        // Get first due date for display
+        const firstDueDate = result.movements[0]?.due_date;
+        let dueDateDisplay = '';
+        if (firstDueDate) {
+          const [year, month, day] = firstDueDate.split('-');
+          dueDateDisplay = ` (vence ${day}/${month})`;
+        }
+
+        if (installments > 1) {
+          finalMessage = `✅ Lançado no ${result.cardName}!\n\n💳 **${d.description}**: ${formattedTotal}\n📅 ${installments}x de ${formattedInstallment}${dueDateDisplay}`;
+        } else {
+          finalMessage = `✅ Lançado no ${result.cardName}!\n\n💳 **${d.description}**: ${formattedTotal}${dueDateDisplay}`;
+        }
+      } else {
+        finalMessage = `❌ Erro ao lançar no cartão: ${result.error}`;
+      }
     }
   }
 

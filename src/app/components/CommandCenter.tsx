@@ -55,6 +55,7 @@ export default function CommandCenter() {
     const [subscription, setSubscription] = useState<any>(null);
     const [userLevel, setUserLevel] = useState<UserLevel>(0);
     const [actionCount, setActionCount] = useState(0);
+    const [tutorialCompleted, setTutorialCompletedState] = useState(true);
     const { triggerTutorial } = useDashboard();
 
     useEffect(() => {
@@ -62,16 +63,39 @@ export default function CommandCenter() {
             setSubscription(data);
         }).catch(console.error);
 
-        // Load user level and action count
+        // Load user level, action count, and tutorial status
         getUserLevel().then(setUserLevel);
         getActionCount().then(setActionCount);
 
-        // Listen for transaction updates to refresh action count
+        // Import and load tutorial completed status
+        import('../actions/profile').then(({ getTutorialCompleted }) => {
+            getTutorialCompleted().then(setTutorialCompletedState);
+        });
+
+        // Listen for transaction updates to refresh action count AND user level
         const handleTransactionUpdate = () => {
             getActionCount().then(setActionCount);
+            getUserLevel().then(setUserLevel); // Also refresh user level
         };
         window.addEventListener('transactionUpdated', handleTransactionUpdate);
-        return () => window.removeEventListener('transactionUpdated', handleTransactionUpdate);
+
+        // Listen for user level updates (from tutorial completion)
+        const handleUserLevelUpdate = (e: CustomEvent<{ level: number }>) => {
+            setUserLevel(e.detail.level as UserLevel);
+        };
+        window.addEventListener('userLevelUpdate', handleUserLevelUpdate as EventListener);
+
+        // Listen for tutorial completed updates
+        const handleTutorialCompletedUpdate = (e: CustomEvent<{ completed: boolean }>) => {
+            setTutorialCompletedState(e.detail.completed);
+        };
+        window.addEventListener('tutorialCompletedUpdate', handleTutorialCompletedUpdate as EventListener);
+
+        return () => {
+            window.removeEventListener('transactionUpdated', handleTransactionUpdate);
+            window.removeEventListener('userLevelUpdate', handleUserLevelUpdate as EventListener);
+            window.removeEventListener('tutorialCompletedUpdate', handleTutorialCompletedUpdate as EventListener);
+        };
     }, []);
 
     return (
@@ -250,8 +274,8 @@ export default function CommandCenter() {
                                 handleSubmit(e);
                             }
                         }}
-                        placeholder="Digite ou fale um comando..."
-                        className="flex-1 rounded-xl px-4 py-3 transition-all outline-none resize-none min-h-[56px] max-h-[200px] scrollbar-thin"
+                        placeholder="digite..."
+                        className="flex-1 rounded-xl px-3 py-2.5 text-sm transition-all outline-none resize-none min-h-[42px] max-h-[200px] scrollbar-thin"
                         style={{
                             background: '#FFFFFF',
                             border: '2px solid var(--light-primary)',
@@ -263,31 +287,34 @@ export default function CommandCenter() {
                     />
 
                     <div className="flex items-center gap-2 pb-1">
-                        <button
-                            onClick={isListening ? stopListening : startListening}
-                            className={cn(
-                                "p-3 rounded-xl transition-all duration-300 border",
-                                isListening
-                                    ? "bg-red-500 text-white hover:bg-red-600 animate-pulse border-red-400 shadow-lg shadow-red-500/30"
-                                    : "hover:bg-slate-100 border-slate-200"
-                            )}
-                            style={!isListening ? { background: 'var(--light-messages-bg)', color: 'var(--light-text-secondary)' } : {}}
-                            title="Usar voz"
-                        >
-                            {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                        </button>
-                        <button
-                            onClick={() => handleSubmit(new Event('submit') as any)}
-                            disabled={!input.trim() || isProcessing}
-                            className="p-3 rounded-xl transition-colors disabled:opacity-50 disabled:shadow-none"
-                            style={{
-                                background: !input.trim() || isProcessing ? 'var(--light-messages-bg)' : 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
-                                color: !input.trim() || isProcessing ? 'var(--light-text-muted)' : 'white',
-                                boxShadow: !input.trim() || isProcessing ? 'none' : '0 4px 12px rgba(14, 165, 233, 0.4)'
-                            }}
-                        >
-                            {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                        </button>
+                        {!input.trim() ? (
+                            <button
+                                onClick={isListening ? stopListening : startListening}
+                                className={cn(
+                                    "p-2.5 rounded-xl transition-all duration-300 border",
+                                    isListening
+                                        ? "bg-red-500 text-white hover:bg-red-600 animate-pulse border-red-400 shadow-lg shadow-red-500/30"
+                                        : "hover:bg-slate-100 border-slate-200"
+                                )}
+                                style={!isListening ? { background: 'var(--light-messages-bg)', color: 'var(--light-text-secondary)' } : {}}
+                                title="Usar voz"
+                            >
+                                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => handleSubmit(new Event('submit') as any)}
+                                disabled={isProcessing}
+                                className="p-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:shadow-none"
+                                style={{
+                                    background: isProcessing ? 'var(--light-messages-bg)' : 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
+                                    color: isProcessing ? 'var(--light-text-muted)' : 'white',
+                                    boxShadow: isProcessing ? 'none' : '0 4px 12px rgba(14, 165, 233, 0.4)'
+                                }}
+                            >
+                                {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                            </button>
+                        )}
                     </div>
                 </div>
                 {/* Hint - escondido no mobile */}
@@ -298,8 +325,30 @@ export default function CommandCenter() {
                 {/* Botões de Nível - aparecem após tutorial */}
                 {userLevel >= 1 && (
                     <div className="flex justify-center gap-2 mt-3">
-                        {actionCount < 2 ? (
-                            /* Menos de 2 ações: mostrar Refazer Tutorial */
+                        {/* Lógica: 
+                            - Se completou tutorial: 2+ ações = próximo nível
+                            - Se pulou tutorial: 10+ ações = próximo nível
+                            - Senão: Refazer tutorial
+                        */}
+                        {(tutorialCompleted ? actionCount >= 2 : actionCount >= 10) && userLevel < 4 ? (
+                            /* Pode ir para próximo nível */
+                            <button
+                                onClick={() => {
+                                    const nextLevel = userLevel + 1;
+                                    triggerTutorial(`START_L${nextLevel}`);
+                                }}
+                                className="text-xs px-4 py-2 rounded-full border transition-all hover:shadow-md flex items-center gap-1.5"
+                                style={{
+                                    background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
+                                    borderColor: 'rgba(14, 165, 233, 0.3)',
+                                    color: '#0EA5E9'
+                                }}
+                            >
+                                <Sparkles className="w-3 h-3" />
+                                Ir para Nível {userLevel + 1}
+                            </button>
+                        ) : userLevel < 4 ? (
+                            /* Ainda não pode ir: mostrar Refazer Tutorial */
                             <button
                                 onClick={() => {
                                     const textarea = document.querySelector('textarea');
@@ -321,27 +370,6 @@ export default function CommandCenter() {
                             >
                                 <RotateCcw className="w-3 h-3" />
                                 Refazer tutorial nível {userLevel}
-                            </button>
-                        ) : userLevel < 4 ? (
-                            /* 2+ ações e não está no nível máximo: mostrar Ir para Nível X+1 */
-                            <button
-                                onClick={() => {
-                                    const nextLevel = userLevel + 1;
-                                    if (nextLevel >= 3) {
-                                        alert('🚧 Em breve!\n\nO Nível 3 está em fase de implantação. Você será notificado quando estiver disponível!\n\nContinue aproveitando as funcionalidades atuais. 😊');
-                                        return;
-                                    }
-                                    triggerTutorial(`START_L${nextLevel}`);
-                                }}
-                                className="text-xs px-4 py-2 rounded-full border transition-all hover:shadow-md flex items-center gap-1.5"
-                                style={{
-                                    background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
-                                    borderColor: 'rgba(14, 165, 233, 0.3)',
-                                    color: '#0EA5E9'
-                                }}
-                            >
-                                <Sparkles className="w-3 h-3" />
-                                Ir para Nível {userLevel + 1}
                             </button>
                         ) : null}
                     </div>

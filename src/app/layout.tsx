@@ -26,6 +26,26 @@ export const metadata: Metadata = {
     shortcut: "/favicon-96x96.png",
     apple: "/apple-touch-icon.png",
   },
+  openGraph: {
+    type: "website",
+    title: "Meu Dinheiro IA",
+    description: "Gerencie suas finanças com inteligência artificial.",
+    siteName: "Meu Dinheiro IA",
+    images: [
+      {
+        url: "/web-app-manifest-512x512.png",
+        width: 512,
+        height: 512,
+        alt: "Meu Dinheiro IA",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Meu Dinheiro IA",
+    description: "Gerencie suas finanças com inteligência artificial.",
+    images: ["/web-app-manifest-512x512.png"],
+  },
 };
 
 import ClientLayout from "./components/ClientLayout";

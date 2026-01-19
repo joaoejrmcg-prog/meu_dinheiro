@@ -80,6 +80,11 @@ export interface Movement {
 
     is_paid: boolean;
 
+    // Installment fields
+    installment_group_id?: string;
+    installments_current?: number;
+    installments_total?: number;
+
     // Joined fields (optional - populated by getMovements)
     account_name?: string;
 
@@ -98,6 +103,9 @@ export interface Recurrence {
     category_id?: string;
     account_id?: string;
     card_id?: string;
+    account_name?: string; // Joined field - populated when fetching
+    is_auto_debit?: boolean;
+    variable_amount?: boolean;
     created_at: string;
 }
 
@@ -118,6 +126,11 @@ export type IntentType =
     | 'SET_DEFAULT_ACCOUNT'
     | 'CREATE_RECURRENCE'
     | 'DELETE_RECURRENCE'
+    | 'SET_AUTO_DEBIT'
+    | 'CHECK_AUTO_DEBIT'
+    | 'LIST_AUTO_DEBITS'
+    | 'CREATE_INSTALLMENT'
+    | 'CREDIT_CARD_PURCHASE'
     | 'NAVIGATE'
     | 'UNKNOWN';
 

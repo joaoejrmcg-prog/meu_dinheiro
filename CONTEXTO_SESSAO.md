@@ -1,64 +1,41 @@
-# Contexto da Sessão
+# CONTEXTO DA SESSÃO - 18/01/2026
 
-> **Última Atualização:** 17/01/2026 às 00:15
+## O que foi feito
 
----
+### 1. Parcelamentos (Carnê/Crediário) ✅
+- Criado intent `CREATE_INSTALLMENT` em `types.ts`
+- Criado função `createInstallmentPurchase()` em `financial.ts`
+- Adicionado prompt com slot-filling e handler em `ai.ts`
+- **Testado e funcionando** com múltiplos cenários
 
-## 📌 Sessão de 16-17/01/2026 - Tutorial L1 e L3
+### 2. Compras no Cartão de Crédito ✅
+- Criado intent `CREDIT_CARD_PURCHASE` em `types.ts`
+- Criado função `createCreditCardPurchase()` em `financial.ts` (calcula vencimento automaticamente)
+- Criado função `getCardByName()` em `assets.ts`
+- Adicionado prompt e handler em `ai.ts`
+- **Aguardando testes**
 
-### Status: EM ANDAMENTO (pendência no L1)
+### 3. Edição de Cartões ✅
+- Adicionado botão de editar (lápis) nos cards de cartão
+- Modal de edição com: fechamento, vencimento, limite, definir como principal
+- Criado função `setDefaultCard()` em `assets.ts`
+- Corrigido `createCreditCard()` para marcar primeiro cartão como principal
 
----
+## Arquivos modificados
+- `src/app/types.ts` - Adicionados intents
+- `src/app/actions/financial.ts` - Funções de parcelamento e cartão
+- `src/app/actions/assets.ts` - Funções auxiliares de cartão
+- `src/app/actions/ai.ts` - Prompts e handlers
+- `src/app/assets/page.tsx` - UI de edição de cartões
 
-## ✅ O que foi feito no Tutorial L1
+## 🔴 PRIORIDADE PRÓXIMA SESSÃO
+1. **Soft delete** para contas e cartões (preservar histórico)
+2. **Testar compras no cartão** via IA
+3. Executar SQL `add_tutorial_completed_field.sql`
 
-1. **Nova mensagem final** com texto sobre nível simples
-2. **Novo fluxo reorganizado:**
-   - COMPLETE → "Perfeito! R$ X..." → [Continuar]
-   - L1_TIPS_OFFER → "💡 Esse app tem várias funções..." → [Continuar] / [Não cometa erros]
-   - L1_DONE → "🎉 Parabéns!"
-3. **TipsModal.tsx criado** com 3 dicas de lançamento
-4. **Integrado no ClientLayout.tsx**
-
-### ❌ Pendência L1 (Bug)
-
-O modal de dicas não está disparando a mensagem de parabéns ao fechar.
-- Evento `tipsModalClosed` foi adicionado no TipsModal
-- Listener foi adicionado no useCommandCenterLogic
-- **Possível causa:** O listener está no useEffect que só roda uma vez, pode estar fora do escopo ou o evento não está sendo capturado
-- **Alternativa:** Usar o botão "Continuar" como caminho principal e o modal como opcional
-
----
-
-## 📋 Tutorial L3 - Plano Definido
-
-Arquivo: `implementation_plan.md` (nesta pasta brain)
-
-**Blocos planejados:**
-1. Boas-vindas ("Que bom que você chegou até aqui!")
-2. Débito Automático (pergunta retórica + explicação)
-3. Crediário (compras parceladas)
-4. Cartão de Crédito (pergunta SIM/NÃO, escolha banco, datas + limite via slot-filling)
-5. Upload de fatura (opcional)
-6. Exemplos de perguntas
-7. Finalização
-
-**Decisões já tomadas:**
-- Slot-filling com pergunta única para datas/limite
-- Upload de fatura opcional com dica sobre investigar cobranças
-
----
-
-## 📁 Arquivos Modificados
-
-- `src/app/hooks/useCommandCenterLogic.ts` - Lógica do tutorial L1
-- `src/app/components/TipsModal.tsx` - Modal de dicas (NOVO)
-- `src/app/components/ClientLayout.tsx` - Integração do modal
-
----
-
-## 📝 Próximos Passos (17/01)
-
-1. **Corrigir bug do modal** que não dispara mensagem de parabéns
-2. **Testar fluxo completo do L1**
-3. **Implementar Tutorial L3** conforme implementation_plan.md
+## Comandos para testar cartão
+```
+"Comprei uma janta de 120 no cartão"
+"Gastei 500 no cartão em 5x"
+"Paguei o tênis de 350 no Nubank"
+```

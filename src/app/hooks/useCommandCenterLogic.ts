@@ -32,9 +32,12 @@ type TutorialStep =
     | 'L2_INTRO' | 'L2_BANK_ASK' | 'L2_BANK_CHOOSE' | 'L2_BANK_CUSTOM' | 'L2_BANK_CREATED'
     | 'L2_TRANSFER_EXPLAIN' | 'L2_RECURRENCE_EXPLAIN' | 'L2_SCHEDULE_EXPLAIN' | 'L2_DONE'
     // Level 3 tutorial (Crédito)
-    | 'L3_INTRO' | 'L3_CARD_ASK' | 'L3_CARD_CREATED' | 'L3_LOAN_EXPLAIN' | 'L3_DONE'
+    | 'L3_INTRO' | 'L3_DA_INTRO' | 'L3_DA_EXAMPLE'
+    | 'L3_INSTALLMENT_INTRO' | 'L3_INSTALLMENT_EXAMPLE'
+    | 'L3_CARD_INTRO' | 'L3_CARD_ASK' | 'L3_CARD_NAME' | 'L3_CARD_CUSTOM' | 'L3_CARD_DATES'
+    | 'L3_CARD_CREATED' | 'L3_CARD_OTHER' | 'L3_CARD_DISTINCTION' | 'L3_CARD_TIPS' | 'L3_CARD_PDF' | 'L3_DONE'
     // Level 4 tutorial (Planejamento)
-    | 'L4_INTRO' | 'L4_GOAL_ASK' | 'L4_GOAL_CREATED' | 'L4_PROJECTION_EXPLAIN' | 'L4_DONE';
+    | 'L4_INTRO' | 'L4_GOALS_EXPLAIN' | 'L4_LOANS_EXPLAIN' | 'L4_FORECAST_EXPLAIN' | 'L4_SIMULATION_TASK' | 'L4_DONE';
 
 export function useCommandCenterLogic() {
     const [input, setInput] = useState("");
@@ -47,6 +50,7 @@ export function useCommandCenterLogic() {
     const [userLevel, setUserLevel] = useState<UserLevel>(0);
     const [quickActions, setQuickActions] = useState<string[]>([]);
     const [l2BankName, setL2BankName] = useState<string>(''); // Store bank name for L2 tutorial
+    const [l3CardName, setL3CardName] = useState<string>(''); // Store card name for L3 tutorial
 
     // Slot-filling state to maintain context between conversation turns
     const [pendingSlots, setPendingSlots] = useState<{
@@ -95,14 +99,14 @@ export function useCommandCenterLogic() {
             },
             'START_L3': {
                 step: 'L3_INTRO',
-                content: "Excelente progresso! 💳\n\nAgora vamos dominar o **Crédito**:\n\n1️⃣ **Cartões de Crédito** - Cadastrar seus cartões\n2️⃣ **Faturas** - Acompanhar gastos no cartão\n3️⃣ **Empréstimos** - Controlar dívidas\n\nPronto para o próximo desafio?",
+                content: "Excelente progresso! 💳\n\nAgora vamos dominar o **Crédito e Automação**:\n\n1️⃣ **Débito Automático** — Contas que o banco paga sozinho\n2️⃣ **Compras Parceladas** — Crediário e carnês\n3️⃣ **Cartão de Crédito** — Cadastrar seus cartões\n\nPronto para o próximo desafio?",
                 buttonLabel: 'Continuar',
                 buttonValue: 'L3_CONTINUE_INTRO'
             },
             'START_L4': {
                 step: 'L4_INTRO',
-                content: "Você está no topo! 🎯\n\nVamos dominar o **Planejamento**:\n\n1️⃣ **Metas** - Criar objetivos de economia\n2️⃣ **Reservas** - Guardar dinheiro\n3️⃣ **Projeções** - Simular o futuro\n\nPreparado para planejar seu futuro financeiro?",
-                buttonLabel: 'Continuar',
+                content: "Uau! Você chegou ao topo! 🏆\nBem-vindo ao **Nível 4: Estrategista**.\n\nAté agora, você aprendeu a controlar o passado e o presente.\nA partir de hoje, você vai desenhar o seu **futuro**.",
+                buttonLabel: 'Como assim?',
                 buttonValue: 'L4_CONTINUE_INTRO'
             }
         };
@@ -581,6 +585,435 @@ export function useCommandCenterLogic() {
             return true;
         }
 
+        // ===== LEVEL 3 TUTORIAL =====
+
+        // L3 Intro -> Débito Automático
+        if (userInput === 'L3_CONTINUE_INTRO') {
+            setTutorialStep('L3_DA_INTRO');
+            setMessages(prev => [...prev, {
+                id: 'l3-da-intro',
+                role: 'assistant',
+                content: "🏦 **1. Débito Automático**\n\nAlgumas contas você nem precisa lembrar de pagar — você instruiu o banco a fazer isso sozinho por você.\n\nExemplos: conta de luz, água, condomínio, IPTU...\n\nSe o banco debita automaticamente, aqui também deve acontecer igual.\nAssim seu saldo fica sempre atualizado sem você fazer nada.",
+                buttons: [
+                    { label: 'Entendi', value: 'L3_DA_EXAMPLE', variant: 'primary' },
+                    { label: 'Pular tutorial', value: 'L3_SKIP_TUTORIAL', variant: 'secondary' }
+                ]
+            }]);
+            return true;
+        }
+
+        // Skip L3 Tutorial
+        if (userInput === 'L3_SKIP_TUTORIAL') {
+            // Mark tutorial as skipped (not completed)
+            const { setTutorialCompleted } = await import('../actions/profile');
+            await setTutorialCompleted(false);
+
+            // Dispatch event to update UI
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('tutorialCompletedUpdate', { detail: { completed: false } }));
+            }
+
+            // Update user level to 3
+            await updateUserLevel(3 as UserLevel);
+            setUserLevel(3);
+
+            // Dispatch event to update Sidebar
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 3 } }));
+            }
+
+            setTutorialStep('IDLE');
+            setMessages(prev => [...prev, {
+                id: 'l3-skipped',
+                role: 'assistant',
+                content: "Ok! Tutorial pulado. 👍\n\nVocê agora está no **Nível 3** e pode usar todas as funcionalidades de crédito.\n\nSe quiser refazer o tutorial depois, é só clicar no botão **Refazer tutorial** lá embaixo.",
+                type: 'success'
+            }]);
+            return true;
+        }
+
+        // DA Example
+        if (userInput === 'L3_DA_EXAMPLE') {
+            setTutorialStep('L3_DA_EXAMPLE');
+            setMessages(prev => [...prev, {
+                id: 'l3-da-example',
+                role: 'assistant',
+                content: "Para cadastrar um débito automático, me diga:\n• \"Conta de luz de 150 reais todo dia 10, débito automático\"\n• \"Condomínio de 800 reais, débito automático no Itaú\"\n\nEu registro e, quando chegar o dia, o valor sai sozinho da conta.",
+                buttons: [{ label: 'Continuar', value: 'L3_GO_INSTALLMENT', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Go to Installments (Crediário)
+        if (userInput === 'L3_GO_INSTALLMENT') {
+            setTutorialStep('L3_INSTALLMENT_INTRO');
+            setMessages(prev => [...prev, {
+                id: 'l3-installment-intro',
+                role: 'assistant',
+                content: "🏪 **2. Compras Parceladas (Crediário)**\n\nSabe aquela loja que vende em 10x no boleto ou no carnê?\nIsso é diferente de cartão de crédito — são parcelas fixas que você paga todo mês.\n\nExemplo: Comprei uma TV de R$ 2.000 em 10x de R$ 200.",
+                buttons: [{ label: 'Entendi', value: 'L3_INSTALLMENT_EXAMPLE', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Installment Example
+        if (userInput === 'L3_INSTALLMENT_EXAMPLE') {
+            setTutorialStep('L3_INSTALLMENT_EXAMPLE');
+            setMessages(prev => [...prev, {
+                id: 'l3-installment-example',
+                role: 'assistant',
+                content: "Para lançar uma compra parcelada, me diga:\n• \"Comprei TV de 2500 em 10x no carnê das Casas Bahia\"\n• \"Parcelei geladeira em 12x de 150 reais\"\n• \"Comprei um sapato por 180 reais, dei entrada de 80, e o restante em 2 vezes. A primeira vence 10/02\"\n\nEu crio todas as parcelas automaticamente no seu calendário e te lembro quando chegar a hora.",
+                buttons: [{ label: 'Continuar', value: 'L3_GO_CARD', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Go to Credit Card - simplified intro
+        if (userInput === 'L3_GO_CARD') {
+            setTutorialStep('L3_CARD_INTRO');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-intro',
+                role: 'assistant',
+                content: "💳 **3. Cartão de Crédito**\nVocê usa cartão de crédito?",
+                buttons: [
+                    { label: 'Sim', value: 'L3_CARD_YES', variant: 'primary' },
+                    { label: 'Não, pular', value: 'L3_CARD_SKIP', variant: 'secondary' }
+                ]
+            }]);
+            return true;
+        }
+
+        // User skips credit card
+        if (userInput === 'L3_CARD_SKIP') {
+            setTutorialStep('L3_DONE');
+            // Update user level to 3
+            await updateUserLevel(3 as UserLevel);
+            setUserLevel(3);
+
+            // Dispatch event to update Sidebar
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 3 } }));
+            }
+
+            setMessages(prev => [...prev, {
+                id: 'l3-done-no-card',
+                role: 'assistant',
+                content: "🎉 Parabéns! Nível 3 completo!\n\nAgora você pode:\n• Cadastrar débitos automáticos\n• Lançar compras parceladas\n\nQuando quiser usar cartão de crédito, é só criar um na tela **Contas e Cartões**.\n\nContinue no seu ritmo!",
+                type: 'success'
+            }]);
+            return true;
+        }
+
+        // User has credit card -> ask which one
+        if (userInput === 'L3_CARD_YES') {
+            setTutorialStep('L3_CARD_NAME');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-name',
+                role: 'assistant',
+                content: "Qual cartão você mais usa?",
+                buttons: [
+                    { label: 'Nubank', value: 'L3_CARD_Nubank', variant: 'bank' },
+                    { label: 'Itaú', value: 'L3_CARD_Itaú', variant: 'bank' },
+                    { label: 'Inter', value: 'L3_CARD_Inter', variant: 'bank' },
+                    { label: 'C6 Bank', value: 'L3_CARD_C6 Bank', variant: 'bank' },
+                    { label: 'Outro', value: 'L3_CARD_OTHER', variant: 'secondary' }
+                ]
+            }]);
+            return true;
+        }
+
+        // User chose card via button
+        if (userInput.startsWith('L3_CARD_') && tutorialStep === 'L3_CARD_NAME') {
+            const cardName = userInput.replace('L3_CARD_', '');
+
+            if (cardName === 'OTHER') {
+                setTutorialStep('L3_CARD_CUSTOM');
+                setMessages(prev => [...prev, {
+                    id: 'l3-card-other',
+                    role: 'assistant',
+                    content: "Me diz o nome do seu cartão:",
+                }]);
+                return true;
+            }
+
+            setL3CardName(cardName);
+            setTutorialStep('L3_CARD_DATES');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-dates',
+                role: 'assistant',
+                content: `Ótimo! Agora preciso saber informações importantes do seu ${cardName}:\n\nMe diga 3 coisas:\nQual o dia que a fatura **fecha**\nQual o dia que o cartão **vence**\nQual o **limite** do seu cartão\n\n💡 Exemplo: "Fecha dia 15, vence dia 22 com limite de 8000"`,
+            }]);
+            return true;
+        }
+
+        // User typed card name directly
+        if (tutorialStep === 'L3_CARD_NAME' && !userInput.startsWith('L3_')) {
+            const cardName = userInput.trim();
+
+            if (cardName.length < 2) {
+                setMessages(prev => [...prev, {
+                    id: 'l3-card-invalid',
+                    role: 'assistant',
+                    content: "Hmm, não entendi. Use os botões ou digite o nome do seu cartão (ex: Santander, Bradesco...):",
+                }]);
+                return true;
+            }
+
+            setL3CardName(cardName);
+            setTutorialStep('L3_CARD_DATES');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-dates',
+                role: 'assistant',
+                content: `Ótimo! Agora preciso saber informações importantes do seu ${cardName}:\n\nMe diga 3 coisas:\nQual o dia que a fatura **fecha**\nQual o dia que o cartão **vence**\nQual o **limite** do seu cartão\n\n💡 Exemplo: "Fecha dia 15, vence dia 22 com limite de 8000"`,
+            }]);
+            return true;
+        }
+
+        // User typed custom card name (after clicking "Outro")
+        if (tutorialStep === 'L3_CARD_CUSTOM') {
+            const cardName = userInput.trim();
+
+            if (cardName.length < 2) {
+                setMessages(prev => [...prev, {
+                    id: 'l3-card-invalid',
+                    role: 'assistant',
+                    content: "Hmm, não entendi. Me diz o nome do seu cartão (ex: Santander, Bradesco, Banco do Brasil...):",
+                }]);
+                return true;
+            }
+
+            setL3CardName(cardName);
+            setTutorialStep('L3_CARD_DATES');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-dates',
+                role: 'assistant',
+                content: `Ótimo! Agora preciso saber informações importantes do seu ${cardName}:\n\nMe diga 3 coisas:\nQual o dia que a fatura **fecha**\nQual o dia que o cartão **vence**\nQual o **limite** do seu cartão\n\n💡 Exemplo: "Fecha dia 15, vence dia 22 com limite de 8000"`,
+            }]);
+            return true;
+        }
+
+        // User provides card dates + limit (slot-filling)
+        if (tutorialStep === 'L3_CARD_DATES') {
+            // Parse dates and limit from user input
+            const datePattern = /(\d{1,2})/g;
+            const matches = userInput.match(datePattern);
+
+            if (!matches || matches.length < 2) {
+                setMessages(prev => [...prev, {
+                    id: 'l3-dates-invalid',
+                    role: 'assistant',
+                    content: "Não consegui entender as informações. Me diz no formato:\n\"Fecha dia X, vence dia Y com limite de Z\"\n\nPor exemplo: \"Fecha dia 15, vence dia 22 com limite de 8000\"",
+                }]);
+                return true;
+            }
+
+            const closingDay = parseInt(matches[0]);
+            const dueDay = parseInt(matches[1]);
+            const limitAmount = matches.length >= 3 ? parseInt(matches[2]) : undefined;
+
+            if (closingDay < 1 || closingDay > 31 || dueDay < 1 || dueDay > 31) {
+                setMessages(prev => [...prev, {
+                    id: 'l3-dates-invalid-range',
+                    role: 'assistant',
+                    content: "Os dias precisam ser entre 1 e 31. Tenta de novo:\n\"Fecha dia X, vence dia Y com limite de Z\"",
+                }]);
+                return true;
+            }
+
+            // Create the credit card
+            const { createCreditCard } = await import('../actions/assets');
+            try {
+                await createCreditCard({
+                    name: l3CardName,
+                    closing_day: closingDay,
+                    due_day: dueDay,
+                    limit_amount: limitAmount
+                });
+
+                const limitText = limitAmount ? `, com limite de ${limitAmount.toLocaleString('pt-BR')}` : '';
+                setTutorialStep('L3_CARD_CREATED');
+                setMessages(prev => [...prev, {
+                    id: 'l3-card-created',
+                    role: 'assistant',
+                    content: `✅ Criei o cartão **${l3CardName}**!\n(Fecha dia ${closingDay}, vence dia ${dueDay}${limitText})\n\nEsse será seu **cartão principal**.\nQuando você disser "gastei 50 no crédito", vou usar esse cartão.\nSe você fizer uma assinatura mensal diga:\n"Assinei Netflix por 39,90"\n"Vou pagar 49,90 todo mês pelo Spotify no cartão"\ne eu lanço uma cobrança recorrente no cartão pra você.`,
+                    buttons: [{ label: 'Continuar', value: 'L3_GO_CARD_OTHER', variant: 'primary' }]
+                }]);
+            } catch (error) {
+                console.error('Error creating credit card:', error);
+                setMessages(prev => [...prev, {
+                    id: 'l3-card-error',
+                    role: 'assistant',
+                    content: "Ops, tive um problema ao criar o cartão. Mas não se preocupe, você pode criar depois na tela Contas e Cartões.",
+                    buttons: [{ label: 'Continuar', value: 'L3_GO_CARD_OTHER', variant: 'primary' }]
+                }]);
+            }
+            return true;
+        }
+
+        // Explain about other cards
+        if (userInput === 'L3_GO_CARD_OTHER') {
+            setTutorialStep('L3_CARD_OTHER');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-other-explain',
+                role: 'assistant',
+                content: "Se tiver outro cartão, você pode criar a qualquer momento dizendo:\n\"Agora tenho um novo cartão Nubank\"\nE eu cadastro pra você.\nMas ele não será seu cartão principal. Então, se quiser lançar nele, é só especificar:\n\"Gastei 100 no crédito do Nubank\"\nEm vez de lançar no cartão principal eu lanço nele.",
+                buttons: [{ label: 'Entendi', value: 'L3_GO_DISTINCTION', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Distinction between account and card
+        if (userInput === 'L3_GO_DISTINCTION') {
+            setTutorialStep('L3_CARD_DISTINCTION');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-distinction',
+                role: 'assistant',
+                content: "💡 **Dica importante!**\n\nSe você tem conta corrente e cartão no mesmo banco (ex: Itaú), pra eu lançar no cartão de crédito, precisa dizer \"no crédito\" ou \"no cartão\" ou \"no cartão de crédito\" pra eu saber a diferença:\n\n• \"Paguei 50 no Itaú\" → sai da **conta** Itaú\n• \"Paguei 50 no crédito do Itaú\" → vai pro **cartão** Itaú",
+                buttons: [{ label: 'Entendi', value: 'L3_GO_TIPS', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Card tips - future uses
+        if (userInput === 'L3_GO_TIPS') {
+            setTutorialStep('L3_CARD_TIPS');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-tips',
+                role: 'assistant',
+                content: "Veja como estas informações podem te ajudar no futuro:\n**1** – Você pode me perguntar **quanto está sua fatura do mês** e eu te respondo.\n**2** – Você pode me perguntar: **Qual o melhor cartão pra eu usar hoje?**\n**3** – Você pode me mandar o **PDF da sua fatura** e eu vejo se estão cobrando coisas indevidas que você não lançou.",
+                buttons: [{ label: 'Entendi', value: 'L3_GO_PDF', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // PDF upload instruction
+        if (userInput === 'L3_GO_PDF') {
+            setTutorialStep('L3_CARD_PDF');
+            setMessages(prev => [...prev, {
+                id: 'l3-card-pdf',
+                role: 'assistant',
+                content: "📄 Você pode me mandar o PDF da sua fatura e eu vejo se estão cobrando coisas indevidas que você não lançou.\n\nMe diga: **\"Quero mandar um PDF da minha fatura\"** e eu abro o explorador pra você.",
+                buttons: [{ label: 'Entendi', value: 'L3_FINISH', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Finish L3 Tutorial
+        if (userInput === 'L3_FINISH') {
+            // Mark tutorial as completed
+            const { setTutorialCompleted } = await import('../actions/profile');
+            await setTutorialCompleted(true);
+
+            // Dispatch event to update UI
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('tutorialCompletedUpdate', { detail: { completed: true } }));
+            }
+
+            // Update user level to 3
+            await updateUserLevel(3 as UserLevel);
+            setUserLevel(3);
+
+            // Dispatch event to update Sidebar
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 3 } }));
+            }
+
+            setTutorialStep('IDLE');
+            setMessages(prev => [...prev, {
+                id: 'l3-done',
+                role: 'assistant',
+                content: "🎉 Parabéns! Nível 3 completo!\n\nAgora você pode:\n• Cadastrar débitos automáticos\n• Lançar compras parceladas\n• Usar cartão de crédito com controle total\n\nContinue usando no seu ritmo!",
+                type: 'success'
+            }]);
+            return true;
+        }
+
+        // ===== LEVEL 4 TUTORIAL =====
+
+        // L4 Intro -> Goals Explain
+        if (userInput === 'L4_CONTINUE_INTRO') {
+            setTutorialStep('L4_GOALS_EXPLAIN');
+            setMessages(prev => [...prev, {
+                id: 'l4-goals-explain',
+                role: 'assistant',
+                content: "Sabe aquele dinheiro que sobra? Agora você pode dar um **rumo** pra ele.\n\nNão importa se está na Poupança, em Ações ou embaixo do colchão.\nAqui você cria **Metas** para 'carimbar' esse dinheiro.\n\nAssim você sabe que R$ 2.000 são para 'Viagem' e R$ 3.000 para 'Reserva', sem misturar as coisas.\n\n**Exemplos:**\n• \"Criar meta de Viagem para o Japão valor 15 mil\"\n• \"Guardar 200 reais na reserva de emergência\"\n• \"Quanto falta pro meu Carro Novo?\"",
+                buttons: [{ label: 'Legal!', value: 'L4_GO_LOANS', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Goals -> Loans Explain
+        if (userInput === 'L4_GO_LOANS') {
+            setTutorialStep('L4_LOANS_EXPLAIN');
+            setMessages(prev => [...prev, {
+                id: 'l4-loans-explain',
+                role: 'assistant',
+                content: "Também liberei o controle de **Empréstimos**.\n\n**Como funciona:**\nQuando você diz 'Peguei 1000 emprestado', eu coloco R$ 1000 na sua conta (porque o dinheiro entrou) e anoto que você deve isso.\nQuando diz 'Emprestei 500', eu tiro da sua conta e anoto que devem pra você.\n\n**Exemplos:**\n• \"Peguei 1000 com minha mãe pra pagar quando der\" (Sem data)\n• \"Emprestei 50 pro João pra receber dia 10\" (Data fixa)\n• \"Peguei 5000 no banco pra pagar em 10x de 600\" (Parcelado)",
+                buttons: [{ label: 'Entendi', value: 'L4_GO_FORECAST', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Loans -> Forecast Explain
+        if (userInput === 'L4_GO_FORECAST') {
+            setTutorialStep('L4_FORECAST_EXPLAIN');
+            setMessages(prev => [...prev, {
+                id: 'l4-forecast-explain',
+                role: 'assistant',
+                content: "E por fim, a **Previsão**.\n\nCom base no que você gasta e recebe, eu projeto como estará sua conta nos próximos 6 meses.\nAssim você sabe se vai sobrar dinheiro pro Natal ou se precisa economizar agora.\n\n**Exemplo:**\n• \"Como vai estar meu saldo em dezembro?\"",
+                buttons: [{ label: 'Quero testar', value: 'L4_GO_SIMULATION', variant: 'primary' }]
+            }]);
+            return true;
+        }
+
+        // Forecast -> Simulation Task
+        if (userInput === 'L4_GO_SIMULATION') {
+            setTutorialStep('L4_SIMULATION_TASK');
+            setMessages(prev => [...prev, {
+                id: 'l4-simulation-task',
+                role: 'assistant',
+                content: "Pra começar, que tal uma simulação rápida?\n\nO poder dos juros compostos e da constância é mágico.\n\nExperimente me perguntar algo como:\n• **\"E se eu economizar 300 reais por mês?\"**\n• \"Quanto junta se eu guardar 50 por semana?\"\n• \"E se eu cortar 100 reais de lanche?\"",
+                isTyping: true
+            }]);
+            return true;
+        }
+
+        // User sends simulation query -> Complete L4
+        if (tutorialStep === 'L4_SIMULATION_TASK') {
+            // Mark tutorial as completed
+            const { setTutorialCompleted } = await import('../actions/profile');
+            await setTutorialCompleted(true);
+
+            // Dispatch event to update UI
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('tutorialCompletedUpdate', { detail: { completed: true } }));
+            }
+
+            // Update user level to 4
+            await updateUserLevel(4 as UserLevel);
+            setUserLevel(4);
+
+            // Dispatch event to update Sidebar
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 4 } }));
+            }
+
+            setTutorialStep('L4_DONE');
+
+            // Let the AI process the simulation, then show completion message after a delay
+            setTimeout(() => {
+                setMessages(prev => [...prev, {
+                    id: 'l4-done-' + Date.now(),
+                    role: 'assistant',
+                    content: "🎉 Parabéns! Agora você tem todas as ferramentas.\n\n1. **Carteira e Contas** para o dia a dia.\n2. **Cartões** para o crédito.\n3. **Planejamento** para o futuro.\n\nVocê é oficialmente um **Estrategista Financeiro**. O mundo é seu! 🚀\n\n💡 *Dica: Você pode rever as instruções a qualquer momento no menu **Ajuda**.*",
+                    type: 'success',
+                    isTyping: true
+                }]);
+            }, 4000);
+
+            return false; // Let the AI process the simulation request
+        }
+
         return false; // Not handled
     }, [tutorialStep, addMessage]);
 
@@ -626,19 +1059,20 @@ export function useCommandCenterLogic() {
                             buttonValue: 'L2_CONTINUE_INTRO'
                         },
                         3: {
-                            content: "Excelente progresso! 💳\n\nAgora vamos dominar o **Crédito**:\n\n1️⃣ **Cartões de Crédito** - Cadastrar seus cartões\n2️⃣ **Faturas** - Acompanhar gastos no cartão\n3️⃣ **Empréstimos** - Controlar dívidas\n\nPronto para o próximo desafio?",
+                            content: "Excelente progresso! 💳\n\nAgora vamos dominar o **Crédito e Automação**:\n\n1️⃣ **Débito Automático** — Contas que o banco paga sozinho\n2️⃣ **Compras Parceladas** — Crediário e carnês\n3️⃣ **Cartão de Crédito** — Cadastrar seus cartões\n\nPronto para o próximo desafio?",
                             buttonLabel: 'Continuar',
                             buttonValue: 'L3_CONTINUE_INTRO'
                         },
                         4: {
-                            content: "Você está no topo! 🎯\n\nVamos dominar o **Planejamento**:\n\n1️⃣ **Metas** - Criar objetivos de economia\n2️⃣ **Reservas** - Guardar dinheiro\n3️⃣ **Projeções** - Simular o futuro\n\nPreparado para planejar seu futuro financeiro?",
-                            buttonLabel: 'Continuar',
+                            content: "Uau! Você chegou ao topo! 🏆\nBem-vindo ao **Nível 4: Estrategista**.\n\nAté agora, você aprendeu a controlar o passado e o presente.\nA partir de hoje, você vai desenhar o seu **futuro**.",
+                            buttonLabel: 'Como assim?',
                             buttonValue: 'L4_CONTINUE_INTRO'
                         }
                     };
 
                     const intro = intros[requestedLevel];
-                    setMessages(prev => [...prev, {
+                    // Clear screen before starting tutorial
+                    setMessages([{
                         id: `l${requestedLevel}-intro-redo`,
                         role: 'assistant',
                         content: intro.content,
@@ -816,6 +1250,12 @@ export function useCommandCenterLogic() {
 
             // If in L2 tutorial but not handled, still block AI and show help message
             if (tutorialStep.startsWith('L2_')) {
+                addMessage('assistant', '👆 Use os botões acima para continuar o tutorial.', 'text', { skipRefund: true });
+                return;
+            }
+
+            // If in L3 tutorial but not handled, still block AI and show help message
+            if (tutorialStep.startsWith('L3_') && tutorialStep !== 'L3_CARD_DATES' && tutorialStep !== 'L3_CARD_NAME' && tutorialStep !== 'L3_CARD_CUSTOM') {
                 addMessage('assistant', '👆 Use os botões acima para continuar o tutorial.', 'text', { skipRefund: true });
                 return;
             }

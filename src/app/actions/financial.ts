@@ -881,6 +881,298 @@ export async function registerAutoDebitPayment(params: {
     return { success: true, movement, accountName };
 }
 
+// ============ INSTALLMENTS ============
+
+export interface CreateInstallmentParams {
+    description: string;
+    totalAmount: number;
+    installments: number;
+    hasDownPayment: boolean;
+    downPaymentValue?: number;
+    firstDueDate: string; // YYYY-MM-DD
+    type?: 'income' | 'expense';
+    categoryId?: string;
+    cardId?: string;
+    accountId?: string;
+    store?: string;
+}
+
+/**
+ * Create an installment purchase (carnê/crediário)
+ * Creates N movements, one for each installment
+ * @param params Installment parameters
+ * @returns Result with all created movements or error
+ */
+export async function createInstallmentPurchase(params: CreateInstallmentParams): Promise<{
+    success: boolean;
+    movements?: any[];
+    error?: string;
+    groupId?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    const {
+        description,
+        totalAmount,
+        installments,
+        hasDownPayment,
+        downPaymentValue = 0,
+        firstDueDate,
+        type = 'expense',
+        categoryId,
+        cardId,
+        accountId,
+        store
+    } = params;
+
+    // Validate
+    if (installments < 1) {
+        return { success: false, error: "Número de parcelas deve ser maior que 0" };
+    }
+
+    // Calculate installment values
+    const remainingAmount = totalAmount - downPaymentValue;
+    const installmentsToCreate = hasDownPayment ? installments - 1 : installments;
+    const installmentValue = installmentsToCreate > 0
+        ? Math.round((remainingAmount / installmentsToCreate) * 100) / 100
+        : 0;
+
+    // Generate group ID to link all installments
+    const groupId = crypto.randomUUID();
+
+    // Build description with store if provided
+    const baseDescription = store ? `${description} (${store})` : description;
+
+    const movements: any[] = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+        // If has down payment, create the first movement as paid
+        if (hasDownPayment && downPaymentValue > 0) {
+            const { data: downPaymentMovement, error: dpError } = await supabase
+                .from('movements')
+                .insert({
+                    user_id: user.id,
+                    description: `${baseDescription} (Entrada)`,
+                    amount: downPaymentValue,
+                    type,
+                    date: today,
+                    due_date: null,
+                    is_paid: true,
+                    account_id: accountId || null,
+                    category_id: categoryId || null,
+                    card_id: cardId || null,
+                    is_loan: false,
+                    is_reserve: false,
+                    is_reimbursement: false,
+                    installment_group_id: groupId,
+                    installments_current: 1,
+                    installments_total: installments
+                })
+                .select()
+                .single();
+
+            if (dpError) throw dpError;
+            movements.push(downPaymentMovement);
+        }
+
+        // Create remaining installments
+        const firstDue = new Date(firstDueDate);
+        const startIndex = hasDownPayment ? 2 : 1;
+
+        for (let i = 0; i < installmentsToCreate; i++) {
+            const installmentNumber = startIndex + i;
+            const dueDate = new Date(firstDue);
+            dueDate.setMonth(dueDate.getMonth() + i);
+            const dueDateStr = dueDate.toISOString().split('T')[0];
+
+            const { data: movement, error: mvError } = await supabase
+                .from('movements')
+                .insert({
+                    user_id: user.id,
+                    description: `${baseDescription} (${installmentNumber}/${installments})`,
+                    amount: installmentValue,
+                    type,
+                    date: today,
+                    due_date: dueDateStr,
+                    is_paid: false,
+                    account_id: null, // Pending - no account until paid
+                    category_id: categoryId || null,
+                    card_id: cardId || null,
+                    is_loan: false,
+                    is_reserve: false,
+                    is_reimbursement: false,
+                    installment_group_id: groupId,
+                    installments_current: installmentNumber,
+                    installments_total: installments
+                })
+                .select()
+                .single();
+
+            if (mvError) throw mvError;
+            movements.push(movement);
+        }
+
+        console.log(`[INSTALLMENT] Created ${movements.length} movements for "${description}", group: ${groupId}`);
+
+        return { success: true, movements, groupId };
+
+    } catch (error: any) {
+        console.error("[INSTALLMENT] Error creating installments:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// ============ CREDIT CARD PURCHASES ============
+
+export interface CreateCreditCardPurchaseParams {
+    description: string;
+    amount: number;
+    installments?: number; // 1 = single purchase, >1 = installments
+    cardId: string;
+    categoryId?: string;
+    purchaseDate?: string; // YYYY-MM-DD, defaults to today
+}
+
+/**
+ * Calculate the due date for a credit card purchase based on closing/due day
+ * @param purchaseDate Date of purchase
+ * @param closingDay Card's closing day (1-31)
+ * @param dueDay Card's due day (1-31)
+ * @returns Due date for the purchase (day of bill payment)
+ */
+function calculateCardDueDate(purchaseDate: Date, closingDay: number, dueDay: number): Date {
+    const purchaseDay = purchaseDate.getDate();
+    const purchaseMonth = purchaseDate.getMonth();
+    const purchaseYear = purchaseDate.getFullYear();
+
+    // If purchase is BEFORE or ON closing day → goes to current bill cycle
+    // If purchase is AFTER closing day → goes to next bill cycle
+    if (purchaseDay <= closingDay) {
+        // Current cycle: due date is dueDay of current month (or next if dueDay < closingDay)
+        if (dueDay > closingDay) {
+            // Due date is in same month
+            return new Date(purchaseYear, purchaseMonth, dueDay);
+        } else {
+            // Due date is in next month (e.g., closes 25, due 10)
+            return new Date(purchaseYear, purchaseMonth + 1, dueDay);
+        }
+    } else {
+        // Next cycle: add one more month
+        if (dueDay > closingDay) {
+            return new Date(purchaseYear, purchaseMonth + 1, dueDay);
+        } else {
+            return new Date(purchaseYear, purchaseMonth + 2, dueDay);
+        }
+    }
+}
+
+/**
+ * Create a credit card purchase (single or installments)
+ * Automatically calculates due dates based on card closing/due day
+ */
+export async function createCreditCardPurchase(params: CreateCreditCardPurchaseParams): Promise<{
+    success: boolean;
+    movements?: any[];
+    error?: string;
+    groupId?: string;
+    cardName?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    const {
+        description,
+        amount,
+        installments = 1,
+        cardId,
+        categoryId,
+        purchaseDate
+    } = params;
+
+    // Get card details (for closing_day and due_day)
+    const { data: card, error: cardError } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('id', cardId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (cardError || !card) {
+        return { success: false, error: "Cartão não encontrado" };
+    }
+
+    const today = purchaseDate ? new Date(purchaseDate) : new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Calculate installment value
+    const installmentValue = installments > 1
+        ? Math.round((amount / installments) * 100) / 100
+        : amount;
+
+    // Generate group ID for multiple installments
+    const groupId = installments > 1 ? crypto.randomUUID() : undefined;
+
+    const movements: any[] = [];
+
+    try {
+        for (let i = 0; i < installments; i++) {
+            // Calculate due date for this installment
+            const installmentPurchaseDate = new Date(today);
+            installmentPurchaseDate.setMonth(installmentPurchaseDate.getMonth() + i);
+
+            const dueDate = calculateCardDueDate(
+                i === 0 ? today : installmentPurchaseDate,
+                card.closing_day,
+                card.due_day
+            );
+            const dueDateStr = dueDate.toISOString().split('T')[0];
+
+            const installmentNumber = i + 1;
+            const desc = installments > 1
+                ? `${description} (${installmentNumber}/${installments})`
+                : description;
+
+            const { data: movement, error: mvError } = await supabase
+                .from('movements')
+                .insert({
+                    user_id: user.id,
+                    description: desc,
+                    amount: installmentValue,
+                    type: 'expense',
+                    date: todayStr,
+                    due_date: dueDateStr,
+                    is_paid: false, // Card purchases are never paid immediately
+                    account_id: null,
+                    category_id: categoryId || null,
+                    card_id: cardId,
+                    is_loan: false,
+                    is_reserve: false,
+                    is_reimbursement: false,
+                    installment_group_id: groupId || null,
+                    installments_current: installmentNumber,
+                    installments_total: installments
+                })
+                .select()
+                .single();
+
+            if (mvError) throw mvError;
+            movements.push(movement);
+        }
+
+        console.log(`[CREDIT_CARD] Created ${movements.length} movements for "${description}" on ${card.name}`);
+
+        return { success: true, movements, groupId, cardName: card.name };
+
+    } catch (error: any) {
+        console.error("[CREDIT_CARD] Error creating purchase:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 // ============ SUMMARY ============
 
 export async function getMonthSummary(month: number, year: number, status: 'paid' | 'pending' | 'all' = 'all') {

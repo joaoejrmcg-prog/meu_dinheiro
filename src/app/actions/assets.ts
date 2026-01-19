@@ -347,14 +347,56 @@ export async function createCreditCard(params: { name: string; closing_day: numb
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
+    // Normalize name to title case for consistent storage
+    const normalizedName = params.name.trim().charAt(0).toUpperCase() + params.name.trim().slice(1).toLowerCase();
+
+    // Check if card with same name (case-insensitive) already exists
+    const { data: existing } = await supabase
+        .from('credit_cards')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', normalizedName)
+        .single();
+
+    if (existing) {
+        // Update existing card
+        const { data, error } = await supabase
+            .from('credit_cards')
+            .update({
+                name: normalizedName,
+                closing_day: params.closing_day,
+                due_day: params.due_day,
+                limit_amount: params.limit_amount
+            })
+            .eq('id', existing.id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    }
+
+    // Check if user has any default card
+    const { data: defaultCard } = await supabase
+        .from('credit_cards')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_default', true)
+        .single();
+
+    // First card should be default if no default exists
+    const shouldBeDefault = !defaultCard;
+
+    // Create new card
     const { data, error } = await supabase
         .from('credit_cards')
         .insert({
             user_id: user.id,
-            name: params.name,
+            name: normalizedName,
             closing_day: params.closing_day,
             due_day: params.due_day,
-            limit_amount: params.limit_amount
+            limit_amount: params.limit_amount,
+            is_default: shouldBeDefault
         })
         .select()
         .single();
@@ -405,6 +447,55 @@ export async function getDefaultCard() {
         .single();
 
     return data;
+}
+
+export async function setDefaultCard(cardId: string) {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // First, remove default from all user's cards
+    await supabase
+        .from('credit_cards')
+        .update({ is_default: false })
+        .eq('user_id', user.id);
+
+    // Then set the new default
+    const { error } = await supabase
+        .from('credit_cards')
+        .update({ is_default: true })
+        .eq('id', cardId)
+        .eq('user_id', user.id);
+
+    if (error) throw error;
+    return { success: true };
+}
+
+// Get credit card by name (case-insensitive and accent-insensitive)
+export async function getCardByName(name: string): Promise<CreditCard | null> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Normalize function to remove accents and lowercase
+    const normalize = (str: string) => str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const normalizedSearch = normalize(name);
+
+    // Get all user cards and find match
+    const { data: cards } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('user_id', user.id);
+
+    if (!cards) return null;
+
+    // Find card with matching normalized name
+    const match = cards.find(card => normalize(card.name) === normalizedSearch);
+    return match || null;
 }
 
 export async function recalculateBalances() {

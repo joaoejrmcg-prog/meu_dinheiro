@@ -28,6 +28,34 @@ As respostas da IA que representam ações completadas com sucesso devem aparece
 
 ---
 
+## 2. Implementar Débito Automático (DA)
+
+**Data identificada:** 2026-01-17
+
+**Descrição:**
+Implementar a funcionalidade prometida no Tutorial L3 para Débito Automático.
+
+**Decisão tomada:** Opção B - Flag `is_auto_debit` com fluxo de 3 passos
+
+**Fluxo do usuário:**
+1. Criar conta recorrente (ex: "Conta de luz todo dia 10")
+2. Marcar como DA (ex: "A conta de luz é débito automático")
+3. Informar valor do mês quando chegar (ex: "A luz veio 185 reais")
+
+**Arquivos relacionados:**
+- `.agent/TESTES_DA.md` - Testes e especificação completa
+- `src/app/actions/financial.ts` - Função createRecurrence
+- `src/app/actions/ai.ts` - Prompt e intents
+
+**O que implementar:**
+1. Script SQL para adicionar `is_auto_debit` e `variable_amount` na tabela `recurrences`
+2. Atualizar prompt da IA para reconhecer "débito automático"
+3. Lógica de processamento automático
+
+**Status:** ⏳ Pendente
+
+---
+
 ## Como usar este arquivo
 
 Adicione novas entradas seguindo o formato acima. Marque como ✅ Resolvido quando corrigir.

@@ -607,6 +607,11 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
     const [formData, setFormData] = useState({ name: '', closing_day: '', due_day: '', limit_amount: '' });
     const [saving, setSaving] = useState(false);
 
+    // Edit modal state
+    const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
+    const [editFormData, setEditFormData] = useState({ closing_day: '', due_day: '', limit_amount: '', is_default: false });
+    const [editSaving, setEditSaving] = useState(false);
+
     const handleCreate = async () => {
         if (!formData.name || !formData.closing_day || !formData.due_day) return;
         setSaving(true);
@@ -630,6 +635,42 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
         if (!confirm('Excluir este cartão?')) return;
         await deleteCreditCard(id);
         onRefresh();
+    };
+
+    const openEditModal = (card: CreditCardType) => {
+        setEditingCard(card);
+        setEditFormData({
+            closing_day: card.closing_day.toString(),
+            due_day: card.due_day.toString(),
+            limit_amount: card.limit_amount?.toString() || '',
+            is_default: card.is_default || false
+        });
+    };
+
+    const handleEdit = async () => {
+        if (!editingCard || !editFormData.closing_day || !editFormData.due_day) return;
+        setEditSaving(true);
+        try {
+            const { updateCreditCard, setDefaultCard } = await import('../actions/assets');
+
+            // Update card data
+            await updateCreditCard(editingCard.id, {
+                closing_day: parseInt(editFormData.closing_day),
+                due_day: parseInt(editFormData.due_day),
+                limit_amount: parseFloat(editFormData.limit_amount) || undefined
+            });
+
+            // If setting as default, call setDefaultCard
+            if (editFormData.is_default && !editingCard.is_default) {
+                await setDefaultCard(editingCard.id);
+            }
+
+            setEditingCard(null);
+            onRefresh();
+        } catch (e) {
+            console.error(e);
+        }
+        setEditSaving(false);
     };
 
     return (
@@ -712,7 +753,10 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
                                 <CreditCard className="w-5 h-5" />
                             </div>
                             <div className="flex-1">
-                                <p className="font-medium text-white">{card.name}</p>
+                                <p className="font-medium text-white flex items-center gap-2">
+                                    {card.name}
+                                    {card.is_default && <span className="text-[10px] text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded-full">(Principal)</span>}
+                                </p>
                                 <p className="text-xs text-neutral-500">
                                     Fecha dia {card.closing_day} • Vence dia {card.due_day}
                                 </p>
@@ -726,6 +770,13 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
                                 </div>
                             )}
                             <button
+                                onClick={() => openEditModal(card)}
+                                className="p-2 text-neutral-500 hover:text-purple-400 transition-colors"
+                                title="Editar"
+                            >
+                                <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
                                 onClick={() => handleDelete(card.id)}
                                 className="p-2 text-neutral-500 hover:text-red-400 transition-colors"
                             >
@@ -735,6 +786,90 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
                     ))}
                 </div>
             )}
+
+            {/* Edit Modal */}
+            {editingCard && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-full max-w-md space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                <CreditCard className="w-5 h-5 text-purple-400" />
+                                Editar {editingCard.name}
+                            </h3>
+                            <button onClick={() => setEditingCard(null)} className="text-neutral-500 hover:text-white">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs text-neutral-400 mb-1 block">Dia Fechamento</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="31"
+                                    value={editFormData.closing_day}
+                                    onChange={(e) => setEditFormData({ ...editFormData, closing_day: e.target.value })}
+                                    className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-neutral-400 mb-1 block">Dia Vencimento</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="31"
+                                    value={editFormData.due_day}
+                                    onChange={(e) => setEditFormData({ ...editFormData, due_day: e.target.value })}
+                                    className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-neutral-400 mb-1 block">Limite</label>
+                            <input
+                                type="number"
+                                placeholder="Opcional"
+                                value={editFormData.limit_amount}
+                                onChange={(e) => setEditFormData({ ...editFormData, limit_amount: e.target.value })}
+                                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-white placeholder:text-neutral-500 focus:outline-none focus:border-purple-500"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                            <input
+                                type="checkbox"
+                                id="is_default"
+                                checked={editFormData.is_default}
+                                onChange={(e) => setEditFormData({ ...editFormData, is_default: e.target.checked })}
+                                className="w-4 h-4 accent-purple-500"
+                                disabled={editingCard.is_default}
+                            />
+                            <label htmlFor="is_default" className="text-sm text-neutral-300">
+                                {editingCard.is_default ? 'Este é o cartão principal' : 'Definir como cartão principal'}
+                            </label>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                onClick={() => setEditingCard(null)}
+                                className="flex-1 py-2.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleEdit}
+                                disabled={editSaving || !editFormData.closing_day || !editFormData.due_day}
+                                className="flex-1 py-2.5 rounded-lg bg-purple-500 text-white font-semibold hover:bg-purple-400 disabled:opacity-50"
+                            >
+                                {editSaving ? 'Salvando...' : 'Salvar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

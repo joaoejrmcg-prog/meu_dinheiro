@@ -227,7 +227,8 @@ export async function updateUserLevel(newLevel: UserLevel): Promise<{ success: b
         .from('profiles')
         .update({
             user_level: newLevel,
-            level_actions_count: 0  // Reset counter when changing levels
+            level_actions_count: 0,  // Reset counter when changing levels
+            current_level_tutorial_completed: false  // Reset tutorial status for new level
         })
         .eq('user_id', user.id);
 
@@ -341,4 +342,66 @@ export async function incrementActionCount(): Promise<{ newCount: number; hitMil
         .eq('user_id', user.id);
 
     return { newCount, hitMilestone };
+}
+
+/**
+ * Retorna se o tutorial do nível atual foi completado
+ */
+export async function getTutorialCompleted(): Promise<boolean> {
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) { },
+                remove(name: string, options: CookieOptions) { },
+            },
+        }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return true; // Default to true if not authenticated
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('current_level_tutorial_completed')
+        .eq('user_id', user.id)
+        .single();
+
+    // Default to true if field doesn't exist yet
+    return profile?.current_level_tutorial_completed ?? true;
+}
+
+/**
+ * Define se o tutorial do nível atual foi completado ou pulado
+ */
+export async function setTutorialCompleted(completed: boolean): Promise<void> {
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) { },
+                remove(name: string, options: CookieOptions) { },
+            },
+        }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+        .from('profiles')
+        .update({ current_level_tutorial_completed: completed })
+        .eq('user_id', user.id);
 }
