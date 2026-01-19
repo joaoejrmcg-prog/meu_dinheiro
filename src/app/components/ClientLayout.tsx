@@ -130,7 +130,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
                 <div className="print:hidden sticky top-0 z-40">
                     <Header onMenuClick={() => setIsSidebarOpen(true)} isLightTheme={isHomePage} />
                 </div>
-                <main className={`flex-1 relative overflow-y-auto ${isHomePage ? 'p-0' : 'p-4 lg:p-8'}`}>
+                <main className={`flex-1 relative ${isHomePage ? 'overflow-hidden' : 'overflow-y-auto p-4 lg:p-8'}`}>
                     {children}
                 </main>
             </div>

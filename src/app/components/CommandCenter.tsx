@@ -38,12 +38,15 @@ export default function CommandCenter() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Auto-resize textarea
+    // Auto-resize textarea and control overflow
     useEffect(() => {
         const textarea = textareaRef.current;
         if (textarea) {
             textarea.style.height = 'auto';
-            textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+            const newHeight = Math.min(textarea.scrollHeight, 200);
+            textarea.style.height = `${newHeight}px`;
+            // Only show scrollbar if content exceeds max height
+            textarea.style.overflowY = textarea.scrollHeight > 200 ? 'auto' : 'hidden';
         }
     }, [input]);
 
@@ -99,7 +102,7 @@ export default function CommandCenter() {
     }, []);
 
     return (
-        <div className="flex flex-col h-full rounded-2xl border overflow-hidden shadow-xl" style={{ background: 'var(--light-card-bg)', borderColor: 'var(--light-border)' }}>
+        <div className="flex flex-col h-full rounded-2xl border overflow-hidden shadow-xl" style={{ background: 'var(--light-card-bg)', borderColor: 'var(--light-border)', maxHeight: '100%' }}>
             {/* Header */}
             <div className="p-4 border-b flex items-center justify-between" style={{ background: 'var(--light-card-bg)', borderColor: 'var(--light-border)' }}>
                 <div className="flex items-center gap-3">
@@ -275,7 +278,7 @@ export default function CommandCenter() {
                             }
                         }}
                         placeholder="digite..."
-                        className="flex-1 rounded-xl px-3 py-2.5 text-sm transition-all outline-none resize-none min-h-[42px] max-h-[200px] scrollbar-thin"
+                        className="flex-1 rounded-xl px-3 py-2.5 text-sm transition-all outline-none resize-none min-h-[42px] max-h-[200px]"
                         style={{
                             background: '#FFFFFF',
                             border: '2px solid var(--light-primary)',

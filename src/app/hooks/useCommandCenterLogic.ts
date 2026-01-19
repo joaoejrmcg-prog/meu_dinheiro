@@ -980,6 +980,31 @@ export function useCommandCenterLogic() {
 
         // User sends simulation query -> Complete L4
         if (tutorialStep === 'L4_SIMULATION_TASK') {
+            // Parse amount from user input (e.g., "300 reais por mês")
+            const amountMatch = userInput.match(/(\d+(?:[.,]\d+)?)/);
+            const monthlyAmount = amountMatch ? parseFloat(amountMatch[1].replace(',', '.')) : 300;
+
+            // Calculate compound interest (poupança ~0.5% a.m.)
+            const monthlyRate = 0.005; // 0.5% ao mês (taxa conservadora de poupança)
+            const months = 12;
+
+            // Fórmula de juros compostos para aportes mensais:
+            // FV = P × [(1 + r)^n - 1] / r
+            const futureValue = monthlyAmount * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
+            const totalDeposited = monthlyAmount * months;
+            const interestEarned = futureValue - totalDeposited;
+
+            // Format values
+            const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Show simulation result first (without question)
+            setMessages(prev => [...prev, {
+                id: 'l4-simulation-result-' + Date.now(),
+                role: 'assistant',
+                content: `🔮 **Simulação com Juros Compostos:**\n\nSe você guardar **R$ ${formatCurrency(monthlyAmount)}** todo mês na poupança:\n\n💰 Em 1 ano você terá aproximadamente **R$ ${formatCurrency(futureValue)}**\n📈 Sendo R$ ${formatCurrency(totalDeposited)} de depósitos + R$ ${formatCurrency(interestEarned)} de rendimentos`,
+                isTyping: true
+            }]);
+
             // Mark tutorial as completed
             const { setTutorialCompleted } = await import('../actions/profile');
             await setTutorialCompleted(true);
@@ -1000,7 +1025,7 @@ export function useCommandCenterLogic() {
 
             setTutorialStep('L4_DONE');
 
-            // Let the AI process the simulation, then show completion message after a delay
+            // Show congratulations after simulation typewriter completes (longer delay)
             setTimeout(() => {
                 setMessages(prev => [...prev, {
                     id: 'l4-done-' + Date.now(),
@@ -1009,9 +1034,9 @@ export function useCommandCenterLogic() {
                     type: 'success',
                     isTyping: true
                 }]);
-            }, 4000);
+            }, 8000); // 8 seconds to allow simulation typewriter to complete
 
-            return false; // Let the AI process the simulation request
+            return true; // We handled it locally, don't let AI process
         }
 
         return false; // Not handled
@@ -1256,6 +1281,12 @@ export function useCommandCenterLogic() {
 
             // If in L3 tutorial but not handled, still block AI and show help message
             if (tutorialStep.startsWith('L3_') && tutorialStep !== 'L3_CARD_DATES' && tutorialStep !== 'L3_CARD_NAME' && tutorialStep !== 'L3_CARD_CUSTOM') {
+                addMessage('assistant', '👆 Use os botões acima para continuar o tutorial.', 'text', { skipRefund: true });
+                return;
+            }
+
+            // If in L4 tutorial but not handled (except simulation step which expects free input)
+            if (tutorialStep.startsWith('L4_') && tutorialStep !== 'L4_SIMULATION_TASK') {
                 addMessage('assistant', '👆 Use os botões acima para continuar o tutorial.', 'text', { skipRefund: true });
                 return;
             }

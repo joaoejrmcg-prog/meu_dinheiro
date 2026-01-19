@@ -78,30 +78,19 @@ function HomeContent() {
   };
 
   return (
-    <div className="h-full flex flex-col items-center max-w-4xl mx-auto w-full px-4" style={{ background: 'var(--light-background)' }}>
+    <div className="h-full flex flex-col max-w-4xl mx-auto w-full px-4" style={{ background: 'var(--light-background)' }}>
       <Confetti trigger={showConfetti} onComplete={() => setShowConfetti(false)} />
 
+      {/* Payment Reminders - Only show for level 2+ users */}
+      {userLevel >= 2 && <PaymentReminder />}
 
-
-      <div className="w-full flex-1 flex flex-col relative overflow-hidden min-h-0 pb-2">
-
-        <div className="relative z-10 flex flex-col h-full">
-
-          {/* Payment Reminders - Only show for level 2+ users */}
-          {userLevel >= 2 && <PaymentReminder />}
-
-          {/* Chat Area */}
-          <div className="flex-1 min-h-0 w-full max-w-2xl mx-auto flex flex-col">
-            <CommandCenter />
-          </div>
-
-          {/* Botões contextuais removidos - aparecem via chat quando necessário */}
-
-        </div>
+      {/* Chat Area - takes remaining space with proper overflow */}
+      <div className="flex-1 min-h-0 w-full max-w-2xl mx-auto py-2">
+        <CommandCenter />
       </div>
 
       {/* Footer */}
-      <div className="text-center p-4">
+      <div className="text-center py-2 flex-shrink-0">
         <p className="text-xs" style={{ color: 'var(--light-text-muted)' }}>
           &copy; 2026 NeoManager.
           <button
