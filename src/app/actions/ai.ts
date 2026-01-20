@@ -257,11 +257,15 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
    - **Exemplos**:
      - "Criar cartão Nubank com fechamento dia 10 e vencimento dia 17" → CREATE_CREDIT_CARD, card_name: "Nubank", closing_day: 10, due_day: 17
      - "Quero cadastrar meu cartão Itaú" → CREATE_CREDIT_CARD, card_name: "Itaú" (perguntar fechamento e vencimento)
+     - "Cartão Nubank, fecha 15, vence 22, limite 5000" → CREATE_CREDIT_CARD, card_name: "Nubank", closing_day: 15, due_day: 22, limit_amount: 5000
+     - "5000" (após pergunta sobre limite) → CREATE_CREDIT_CARD, limit_amount: 5000 (copiar outros slots do contexto)
+     - "Sem limite" ou "Não sei" (após pergunta sobre limite) → CREATE_CREDIT_CARD, skip_limit: true (copiar outros slots do contexto)
    - **Slots**:
      - \`card_name\`: Nome do cartão (OBRIGATÓRIO).
      - \`closing_day\`: Dia do fechamento da fatura (OBRIGATÓRIO).
      - \`due_day\`: Dia do vencimento da fatura (OBRIGATÓRIO).
-     - \`limit_amount\`: Limite do cartão (OPCIONAL).
+     - \`limit_amount\`: Limite do cartão (número, opcional - se resposta for apenas número, é o limite).
+     - \`skip_limit\`: Se true, pular pergunta de limite (quando usuário diz "sem limite", "não sei", "pular", "depois").
    - **Ação**: Cria o cartão de crédito e confirma.
 
 10c. **GET_INVOICE** (Consultar fatura do cartão)
@@ -296,6 +300,21 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Quanto de limite eu tenho?"
      - "Quanto sobra no meu cartão?"
    - **Ação**: Retorna (Limite - Fatura Atual) para cada cartão.
+
+10f. **PAY_INVOICE** (Pagar fatura do cartão / Baixa em lote)
+   - **QUANDO USAR**: Quando o usuário diz que PAGOU a fatura do cartão.
+   - **Gatilhos**:
+     - "Paguei a fatura do Nubank"
+     - "Quitei a fatura do cartão"
+     - "Paguei meu cartão"
+     - "A fatura do Itaú foi paga"
+   - **Exemplos**:
+     - "Paguei a fatura do Nubank" → PAY_INVOICE, card_name: "Nubank"
+     - "Quitei meu cartão" → PAY_INVOICE (usa cartão padrão)
+   - **Slots**:
+     - \`card_name\`: Nome do cartão (OPCIONAL - se não informado, usa o cartão principal).
+     - \`target_month\`: Mês da fatura 1-12 (OPCIONAL, padrão=última fatura vencida).
+   - **Ação**: Marca todos os movimentos daquela fatura como pagos (is_paid=true).
 
 11. **CREATE_RECURRENCE** (Criar conta recorrente/mensal)
    - **QUANDO USAR**: Quando o usuário menciona "TODO dia X", "toda semana", "mensal", "todo mês".
@@ -1575,11 +1594,24 @@ export async function processCommand(input: string, history: string[] = [], inpu
   if (parsedResponse.intent === 'CREATE_CREDIT_CARD') {
     const d = parsedResponse.data;
 
-    // Validate required fields
+    // Validate required fields (slot-filling)
     if (!d.card_name) {
       finalMessage = `❓ Qual o nome do cartão?`;
     } else if (!d.closing_day || !d.due_day) {
       finalMessage = `❓ Qual o dia de fechamento e vencimento do cartão ${d.card_name}?`;
+    } else if (d.limit_amount === undefined && !d.skip_limit) {
+      // Slot-filling for limit: Ask for limit with skip option
+      finalMessage = `📊 Qual o **limite** do cartão ${d.card_name}?\n\n💡 Se não souber ou não quiser informar, responda "sem limite".`;
+      return {
+        intent: 'CONFIRMATION_REQUIRED' as IntentType,
+        data: {
+          ...d,
+          originalIntent: 'CREATE_CREDIT_CARD',
+          awaitingLimit: true
+        },
+        message: finalMessage,
+        confidence: 0.9
+      };
     } else {
       const { createCreditCard } = await import('./assets');
 
@@ -1588,11 +1620,14 @@ export async function processCommand(input: string, history: string[] = [], inpu
           name: d.card_name,
           closing_day: d.closing_day,
           due_day: d.due_day,
-          limit_amount: d.limit_amount
+          limit_amount: d.limit_amount || undefined
         });
 
         if (card && card.id) {
-          finalMessage = `✅ Cartão **${card.name}** criado! Fechamento no dia ${d.closing_day} e vencimento no dia ${d.due_day}.`;
+          const limitText = d.limit_amount
+            ? ` Limite: R$ ${d.limit_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
+            : '';
+          finalMessage = `✅ Cartão **${card.name}** criado! Fechamento no dia ${d.closing_day} e vencimento no dia ${d.due_day}.${limitText}`;
         } else {
           finalMessage = `❌ Erro ao criar cartão: Retorno inesperado`;
         }
@@ -1610,6 +1645,15 @@ export async function processCommand(input: string, history: string[] = [], inpu
     // Validate required fields
     if (!d.description || !d.amount) {
       finalMessage = `❌ Faltam dados. Me diga o que comprou e o valor.`;
+    } else if (d.hasDownPayment || d.downPaymentValue) {
+      // HYBRID INSTALLMENT DETECTION: Credit card + down payment is not supported
+      finalMessage = `⚠️ **Parcelamento híbrido não é suportado!**\n\n` +
+        `Compras no cartão de crédito não têm entrada. ` +
+        `Se você deu entrada, provavelmente foi um pagamento separado (Pix, dinheiro, débito).\n\n` +
+        `💡 **Como lançar corretamente:**\n` +
+        `1. Lance a entrada como despesa normal: "Gastei X de entrada"\n` +
+        `2. Lance o parcelamento no cartão: "Comprei Y em Zx no cartão"\n\n` +
+        `Ou, se foi crediário da loja (não cartão), diga: "Comprei X em Yx no carnê"`;
     } else {
       const { createCreditCardPurchase } = await import('./financial');
       const { getDefaultCard, getCardByName } = await import('./assets');
@@ -2559,6 +2603,44 @@ export async function processCommand(input: string, history: string[] = [], inpu
     }
   }
 
+  // Handle SIMULATE_SCENARIO - Simular economia
+  if (parsedResponse.intent === 'SIMULATE_SCENARIO') {
+    const d = parsedResponse.data;
+    const monthlyAmount = d.amount || 0;
+    const category = d.category || 'economia';
+
+    if (monthlyAmount <= 0) {
+      finalMessage = `❓ Quanto você quer economizar? Tente: "E se eu economizar 100 reais por mês?"`;
+    } else {
+      // Calculate compound interest projections (poupança ~0.5% a.m.)
+      const monthlyRate = 0.005; // 0.5% ao mês (taxa conservadora de poupança)
+
+      // Calculate for 1 year
+      const months12 = 12;
+      const fv12 = monthlyAmount * ((Math.pow(1 + monthlyRate, months12) - 1) / monthlyRate);
+      const deposited12 = monthlyAmount * months12;
+      const interest12 = fv12 - deposited12;
+
+      // Calculate for 5 years
+      const months60 = 60;
+      const fv60 = monthlyAmount * ((Math.pow(1 + monthlyRate, months60) - 1) / monthlyRate);
+      const deposited60 = monthlyAmount * months60;
+      const interest60 = fv60 - deposited60;
+
+      // Format values
+      const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      finalMessage = `🔮 **Simulação: Economizar R$ ${formatCurrency(monthlyAmount)}/mês em ${category}**\n\n` +
+        `📅 **Em 1 ano:**\n` +
+        `  💰 Total: **R$ ${formatCurrency(fv12)}**\n` +
+        `  📊 Depósitos: R$ ${formatCurrency(deposited12)} + Rendimentos: R$ ${formatCurrency(interest12)}\n\n` +
+        `📅 **Em 5 anos:**\n` +
+        `  💰 Total: **R$ ${formatCurrency(fv60)}**\n` +
+        `  📊 Depósitos: R$ ${formatCurrency(deposited60)} + Rendimentos: R$ ${formatCurrency(interest60)}\n\n` +
+        `💡 *Cálculo considerando rendimento de 0.5% ao mês (poupança).*`;
+    }
+  }
+
   // Handle GET_INVOICE - Consultar fatura do cartão
   if (parsedResponse.intent === 'GET_INVOICE') {
     const d = parsedResponse.data;
@@ -2681,6 +2763,56 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
     } catch (e) {
       finalMessage = `❌ Erro ao consultar limites: ${e}`;
+    }
+  }
+
+  // Handle PAY_INVOICE - Pagar fatura do cartão (baixa em lote)
+  if (parsedResponse.intent === 'PAY_INVOICE') {
+    const d = parsedResponse.data;
+    const { getDefaultCard, getCardByName } = await import('./assets');
+    const { payInvoice } = await import('./financial');
+
+    // Get card - either by name or default
+    let card = null;
+    if (d.card_name) {
+      card = await getCardByName(d.card_name);
+      if (!card) {
+        finalMessage = `❌ Não encontrei o cartão "${d.card_name}". Você já cadastrou ele?`;
+        return {
+          intent: parsedResponse.intent as IntentType,
+          data: parsedResponse.data,
+          message: finalMessage,
+          confidence: 0.9
+        };
+      }
+    } else {
+      card = await getDefaultCard();
+      if (!card) {
+        finalMessage = `❌ Você não tem nenhum cartão cadastrado. Me diz qual cartão você pagou a fatura?`;
+        return {
+          intent: 'CONFIRMATION_REQUIRED' as IntentType,
+          data: { ...d, originalIntent: 'PAY_INVOICE' },
+          message: finalMessage,
+          confidence: 0.9
+        };
+      }
+    }
+
+    try {
+      const result = await payInvoice(card.id, d.target_month);
+
+      if (result.success) {
+        const totalStr = result.totalPaid?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
+        if (result.count === 0) {
+          finalMessage = `ℹ️ Não encontrei movimentos pendentes na fatura do **${card.name}**. Tudo já estava pago!`;
+        } else {
+          finalMessage = `✅ Fatura do **${card.name}** paga!\n\n💰 Total: **${totalStr}**\n📝 ${result.count} ${result.count === 1 ? 'lançamento marcado' : 'lançamentos marcados'} como pago.`;
+        }
+      } else {
+        finalMessage = `❌ Erro ao pagar fatura: ${result.error}`;
+      }
+    } catch (e: any) {
+      finalMessage = `❌ Erro ao processar pagamento: ${e.message}`;
     }
   }
 

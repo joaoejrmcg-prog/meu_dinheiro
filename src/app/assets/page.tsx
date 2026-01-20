@@ -612,6 +612,26 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
     const [editFormData, setEditFormData] = useState({ closing_day: '', due_day: '', limit_amount: '', is_default: false });
     const [editSaving, setEditSaving] = useState(false);
 
+    // Invoice modal state
+    const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+    const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
+    const [invoiceData, setInvoiceData] = useState<any>(null);
+    const [loadingInvoice, setLoadingInvoice] = useState(false);
+
+    const handleOpenInvoice = async (card: CreditCardType) => {
+        setSelectedCard(card);
+        setShowInvoiceModal(true);
+        setLoadingInvoice(true);
+        try {
+            const { getInvoiceDetails } = await import('../actions/assets');
+            const data = await getInvoiceDetails(card.id);
+            setInvoiceData(data);
+        } catch (e) {
+            console.error(e);
+        }
+        setLoadingInvoice(false);
+    };
+
     const handleCreate = async () => {
         if (!formData.name || !formData.closing_day || !formData.due_day) return;
         setSaving(true);
@@ -748,7 +768,11 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
             ) : (
                 <div className="space-y-3">
                     {cards.map((card) => (
-                        <div key={card.id} className="bg-gradient-to-r from-neutral-900 to-neutral-800 border border-neutral-700 rounded-xl p-4 flex items-center gap-4">
+                        <div
+                            key={card.id}
+                            onClick={() => handleOpenInvoice(card)}
+                            className="bg-gradient-to-r from-neutral-900 to-neutral-800 border border-neutral-700 rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:border-purple-500/30 transition-all"
+                        >
                             <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
                                 <CreditCard className="w-5 h-5" />
                             </div>
@@ -770,14 +794,14 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
                                 </div>
                             )}
                             <button
-                                onClick={() => openEditModal(card)}
+                                onClick={(e) => { e.stopPropagation(); openEditModal(card); }}
                                 className="p-2 text-neutral-500 hover:text-purple-400 transition-colors"
                                 title="Editar"
                             >
                                 <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                                onClick={() => handleDelete(card.id)}
+                                onClick={(e) => { e.stopPropagation(); handleDelete(card.id); }}
                                 className="p-2 text-neutral-500 hover:text-red-400 transition-colors"
                             >
                                 <Trash2 className="w-4 h-4" />
@@ -866,6 +890,74 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
                                 {editSaving ? 'Salvando...' : 'Salvar'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Invoice Modal */}
+            {showInvoiceModal && selectedCard && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-5 w-full max-w-lg space-y-4 max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between flex-shrink-0">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                <CreditCard className="w-5 h-5 text-purple-400" />
+                                Fatura: {selectedCard.name}
+                            </h3>
+                            <button onClick={() => setShowInvoiceModal(false)} className="text-neutral-500 hover:text-white">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {loadingInvoice ? (
+                            <div className="flex-1 flex items-center justify-center py-12">
+                                <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        ) : invoiceData ? (
+                            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                                {/* Summary Cards */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-purple-500/10 p-3 rounded-lg border border-purple-500/20">
+                                        <p className="text-xs text-purple-400/70">Total da Fatura</p>
+                                        <p className="font-bold text-purple-400 text-lg">
+                                            R$ {invoiceData.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                    <div className="bg-neutral-800/50 p-3 rounded-lg border border-neutral-700/50">
+                                        <p className="text-xs text-neutral-400">Vencimento</p>
+                                        <p className="font-medium text-white">
+                                            {new Date(invoiceData.dueDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Purchases List */}
+                                <div>
+                                    <h4 className="text-sm font-medium text-neutral-400 mb-2">Compras ({invoiceData.purchases.length})</h4>
+                                    <div className="space-y-2">
+                                        {invoiceData.purchases.length === 0 ? (
+                                            <p className="text-center text-neutral-500 text-sm py-4">Nenhuma compra nesta fatura.</p>
+                                        ) : (
+                                            invoiceData.purchases.map((mov: any) => (
+                                                <div key={mov.id} className="flex items-center justify-between p-3 bg-neutral-800/30 rounded-lg border border-neutral-800">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-white font-medium truncate">{mov.description}</p>
+                                                        <p className="text-xs text-neutral-500">
+                                                            {new Date(mov.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                            {mov.is_paid && <span className="ml-2 text-green-400">✓ Pago</span>}
+                                                        </p>
+                                                    </div>
+                                                    <span className="text-sm font-medium text-red-400 shrink-0 ml-2">
+                                                        R$ {mov.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center text-red-400">Erro ao carregar fatura.</div>
+                        )}
                     </div>
                 </div>
             )}

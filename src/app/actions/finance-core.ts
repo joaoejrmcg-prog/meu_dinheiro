@@ -293,7 +293,7 @@ export async function getFinancialStatus() {
     };
 }
 
-export async function deleteLastMovement(): Promise<{ success: boolean; error?: string; deletedDescription?: string }> {
+export async function deleteLastMovement(): Promise<{ success: boolean; error?: string; deletedDescription?: string; deletedCount?: number }> {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "Não autorizado" };
@@ -311,37 +311,63 @@ export async function deleteLastMovement(): Promise<{ success: boolean; error?: 
         return { success: false, error: "Nenhum lançamento encontrado para excluir." };
     }
 
-    // 2. Revert account balance if applicable
-    if (lastMovement.account_id && lastMovement.is_paid) {
-        const { data: account } = await supabase
-            .from('accounts')
-            .select('balance')
-            .eq('id', lastMovement.account_id)
-            .single();
+    // 2. Check if this is part of an installment group
+    let movementsToDelete: any[] = [lastMovement];
 
-        if (account) {
-            let newBalance = account.balance;
-            // Reverse the effect
-            if (lastMovement.type === 'income') {
-                newBalance -= lastMovement.amount;
-            } else if (lastMovement.type === 'expense') {
-                newBalance += lastMovement.amount;
-            }
-            await supabase.from('accounts').update({ balance: newBalance }).eq('id', lastMovement.account_id);
+    if (lastMovement.installment_group_id) {
+        // Smart Undo: Find ALL movements in this installment group
+        const { data: groupMovements, error: groupError } = await supabase
+            .from('movements')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('installment_group_id', lastMovement.installment_group_id);
+
+        if (!groupError && groupMovements && groupMovements.length > 0) {
+            movementsToDelete = groupMovements;
+            console.log(`[SMART_UNDO] Found ${movementsToDelete.length} movements in installment group ${lastMovement.installment_group_id}`);
         }
     }
 
-    // 3. Delete the movement
+    // 3. Revert account balances for all paid movements
+    for (const mov of movementsToDelete) {
+        if (mov.account_id && mov.is_paid) {
+            const { data: account } = await supabase
+                .from('accounts')
+                .select('balance')
+                .eq('id', mov.account_id)
+                .single();
+
+            if (account) {
+                let newBalance = account.balance;
+                // Reverse the effect
+                if (mov.type === 'income') {
+                    newBalance -= mov.amount;
+                } else if (mov.type === 'expense') {
+                    newBalance += mov.amount;
+                }
+                await supabase.from('accounts').update({ balance: newBalance }).eq('id', mov.account_id);
+            }
+        }
+    }
+
+    // 4. Delete all movements (single or group)
+    const idsToDelete = movementsToDelete.map(m => m.id);
     const { error: deleteError } = await supabase
         .from('movements')
         .delete()
-        .eq('id', lastMovement.id);
+        .in('id', idsToDelete);
 
     if (deleteError) {
         return { success: false, error: deleteError.message };
     }
 
-    return { success: true, deletedDescription: lastMovement.description };
+    // Build description based on whether it was a single movement or installment group
+    const baseDescription = lastMovement.description.replace(/\s*\(\d+\/\d+\)$/, ''); // Remove "(X/Y)" suffix
+    const deletedDescription = movementsToDelete.length > 1
+        ? `${baseDescription} (${movementsToDelete.length} parcelas)`
+        : lastMovement.description;
+
+    return { success: true, deletedDescription, deletedCount: movementsToDelete.length };
 }
 
 export async function updateLastMovementAccount(newAccountName: string): Promise<{

@@ -294,6 +294,11 @@ function DayDetailModal({ day, onClose }: { day: CalendarDay; onClose: () => voi
                                 <p className="text-white font-medium truncate">{mov.description}</p>
                                 <p className="text-xs text-neutral-500">
                                     {mov.type === 'income' ? 'A Receber' : 'A Pagar'}
+                                    {(mov.account_name || mov.card_name) && (
+                                        <span className="ml-1">
+                                            • {mov.card_name ? `💳 ${mov.card_name}` : mov.account_name}
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                             <p className={cn(

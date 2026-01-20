@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { sendSupportMessage, getUserMessages } from '../actions/support';
-import { HelpCircle, Mail, MessageSquare, ChevronDown, ChevronUp, Send, Clock, CheckCircle2 } from 'lucide-react';
+import { HelpCircle, Mail, MessageSquare, ChevronDown, ChevronUp, Send, Clock, CheckCircle2, BookOpen, Lightbulb } from 'lucide-react';
 
 export default function AjudaPage() {
     const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -74,6 +74,101 @@ export default function AjudaPage() {
             <div className="grid lg:grid-cols-3 gap-8">
                 {/* Left Column: FAQ & Contact */}
                 <div className="lg:col-span-2 space-y-8">
+                    {/* Feature Guide Section */}
+                    <div className="space-y-6">
+                        <h2 className="text-lg font-semibold text-neutral-300 flex items-center gap-2">
+                            <BookOpen className="w-5 h-5" />
+                            Guia de Funcionalidades
+                        </h2>
+
+                        {/* Level 1: Basics */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-green-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center text-xs">1</span>
+                                Nível 1: Básico
+                            </h3>
+                            <p className="text-sm text-neutral-400">Registre suas receitas e despesas conversando naturalmente:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Ganhei 2000 de salário"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Gastei 50 no mercado"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Paguei a conta de luz"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Cancela o último"</code>
+                            </div>
+                        </div>
+
+                        {/* Level 2: Intermediate */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-blue-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs">2</span>
+                                Nível 2: Intermediário
+                            </h3>
+                            <p className="text-sm text-neutral-400">Múltiplas contas, transferências e contas recorrentes:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Criar conta no Nubank"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Transferir 500 para Poupança"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Todo dia 10 pago 150 de internet"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"A internet é débito automático"</code>
+                            </div>
+                        </div>
+
+                        {/* Level 3: Credit Cards */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-purple-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center text-xs">3</span>
+                                Nível 3: Cartões de Crédito
+                            </h3>
+                            <p className="text-sm text-neutral-400">Gerencie cartões, compras parceladas e faturas:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Cadastrar cartão Nubank, fecha dia 15, vence dia 22"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Comprei 600 em 6x no Nubank"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Qual a fatura do Nubank?"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Paguei a fatura do Nubank"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Qual o melhor cartão pra comprar hoje?"</code>
+                            </div>
+                        </div>
+
+                        {/* Level 4: Advanced */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-orange-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-xs">4</span>
+                                Nível 4: Empréstimos e Simulações
+                            </h3>
+                            <p className="text-sm text-neutral-400">Empréstimos e simulações financeiras:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Peguei 1000 emprestado do João"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Emprestei 500 para Maria"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Paguei 200 pro João"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"E se eu economizar 100 por mês?"</code>
+                            </div>
+                        </div>
+
+                        {/* Tips Section */}
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 space-y-3">
+                            <h3 className="font-bold text-green-400 flex items-center gap-2">
+                                <Lightbulb className="w-5 h-5" />
+                                Dicas Importantes
+                            </h3>
+                            <ul className="text-sm text-neutral-300 space-y-2">
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Não duplique cartão:</strong> Compras no crédito não saem da conta até você pagar a fatura.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Transferências entre contas:</strong> Não são receita nem despesa. Use "transferir" para mover dinheiro.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Corrigir erros:</strong> Diga "cancela o último" ou "o valor era 50" para corrigir.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Virada do mês:</strong> No 1º dia, você verá um resumo do mês anterior.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
                     {/* FAQ Section */}
                     <div className="space-y-6">
                         <h2 className="text-lg font-semibold text-neutral-300 flex items-center gap-2">

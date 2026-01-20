@@ -1173,6 +1173,106 @@ export async function createCreditCardPurchase(params: CreateCreditCardPurchaseP
     }
 }
 
+/**
+ * Pay a credit card invoice (batch mark as paid)
+ * Marks all unpaid movements for the specified card's invoice as paid
+ * @param cardId Credit card ID
+ * @param targetMonth Optional month (1-12), defaults to current invoice
+ * @returns Result with count and total of movements paid
+ */
+export async function payInvoice(cardId: string, targetMonth?: number): Promise<{
+    success: boolean;
+    count?: number;
+    totalPaid?: number;
+    error?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    // Get card details to determine invoice period
+    const { data: card, error: cardError } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('id', cardId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (cardError || !card) {
+        return { success: false, error: "Cartão não encontrado" };
+    }
+
+    // Calculate invoice period
+    // If no targetMonth, use the last closed invoice (current month if past due_day)
+    const today = new Date();
+    const todayDay = today.getDate();
+    let invoiceMonth: number;
+    let invoiceYear: number;
+
+    if (targetMonth) {
+        invoiceMonth = targetMonth;
+        invoiceYear = today.getFullYear();
+    } else {
+        // Default to current invoice period
+        // If we're past the due_day, the "current" invoice is this month
+        // Otherwise it's last month
+        if (todayDay >= card.due_day) {
+            invoiceMonth = today.getMonth() + 1; // 1-indexed
+            invoiceYear = today.getFullYear();
+        } else {
+            const lastMonth = new Date(today);
+            lastMonth.setMonth(lastMonth.getMonth() - 1);
+            invoiceMonth = lastMonth.getMonth() + 1;
+            invoiceYear = lastMonth.getFullYear();
+        }
+    }
+
+    // Calculate the invoice period range based on due_date
+    // All movements with due_date in invoiceMonth/invoiceYear belong to this invoice
+    const startDueDate = new Date(invoiceYear, invoiceMonth - 1, 1);
+    const endDueDate = new Date(invoiceYear, invoiceMonth, 0);
+
+    const startStr = startDueDate.toISOString().split('T')[0];
+    const endStr = endDueDate.toISOString().split('T')[0];
+
+    console.log(`[PAY_INVOICE] Looking for unpaid movements on card ${card.name} with due_date in ${startStr} to ${endStr}`);
+
+    // Find all unpaid movements for this card in the invoice period
+    const { data: movements, error: fetchError } = await supabase
+        .from('movements')
+        .select('id, amount')
+        .eq('user_id', user.id)
+        .eq('card_id', cardId)
+        .eq('is_paid', false)
+        .gte('due_date', startStr)
+        .lte('due_date', endStr);
+
+    if (fetchError) {
+        return { success: false, error: fetchError.message };
+    }
+
+    if (!movements || movements.length === 0) {
+        return { success: true, count: 0, totalPaid: 0 };
+    }
+
+    // Mark all as paid
+    const ids = movements.map(m => m.id);
+    const totalPaid = movements.reduce((sum, m) => sum + Number(m.amount), 0);
+
+    const { error: updateError } = await supabase
+        .from('movements')
+        .update({ is_paid: true })
+        .in('id', ids);
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    console.log(`[PAY_INVOICE] Marked ${movements.length} movements as paid, total: R$ ${totalPaid.toFixed(2)}`);
+
+    return { success: true, count: movements.length, totalPaid };
+}
+
 // ============ SUMMARY ============
 
 export async function getMonthSummary(month: number, year: number, status: 'paid' | 'pending' | 'all' = 'all') {
@@ -1496,10 +1596,10 @@ export async function getCalendarMovements(month: number, year: number): Promise
     const endDate = formatDate(new Date(year, month, 0));
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    // 1. Get pending movements with due_date
-    const { data: movements, error } = await supabase
+    // 1. Get pending movements with due_date (join account and card names)
+    const { data: movementsRaw, error } = await supabase
         .from('movements')
-        .select('*')
+        .select('*, accounts(name), credit_cards(name)')
         .eq('user_id', user.id)
         .eq('is_paid', false)
         .not('due_date', 'is', null)
@@ -1511,6 +1611,13 @@ export async function getCalendarMovements(month: number, year: number): Promise
         console.error("Error fetching calendar movements:", error);
         return [];
     }
+
+    // Map account and card names to movements
+    const movements = (movementsRaw || []).map((mov: any) => ({
+        ...mov,
+        account_name: mov.accounts?.name || undefined,
+        card_name: mov.credit_cards?.name || undefined
+    }));
 
     // 2. Get active recurrences (with account name join)
     const { data: recurrencesRaw } = await supabase

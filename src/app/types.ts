@@ -99,6 +99,7 @@ export interface Movement {
 
     // Joined fields (optional - populated by getMovements)
     account_name?: string;
+    card_name?: string;
 
     created_at: string;
 }
@@ -154,6 +155,13 @@ export type IntentType =
     | 'EDIT_GOAL'
     | 'DELETE_GOAL'
     | 'NAVIGATE'
+    | 'CREATE_ACCOUNT'
+    | 'GET_INVOICE'
+    | 'GET_BEST_CARD'
+    | 'GET_CARD_LIMITS'
+    | 'PAY_INVOICE'
+    | 'GET_FORECAST'
+    | 'PROJECT_GOAL'
     | 'UNKNOWN';
 
 export interface AIResponse {
