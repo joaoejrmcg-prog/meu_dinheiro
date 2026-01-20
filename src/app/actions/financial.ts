@@ -1808,3 +1808,174 @@ export async function getPendingSummary(month: number, year: number) {
 
     return { totalPayable, totalReceivable, countPayable, countReceivable };
 }
+
+// ============ MONTHLY CLOSING ============
+
+/**
+ * Checks if there's a pending monthly closing for the previous month.
+ * If not, and we are in a new month, calculates surplus and creates one.
+ */
+export async function checkAndCreateMonthlyClosing(): Promise<{
+    hasClosing: boolean;
+    closing?: any;
+    error?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { hasClosing: false };
+
+    const today = new Date();
+    // We want to check the PREVIOUS month
+    const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const prevMonth = prevDate.getMonth() + 1; // 1-12
+    const prevYear = prevDate.getFullYear();
+
+    // 1. Check if closing already exists for previous month
+    const { data: existingClosing } = await supabase
+        .from('monthly_closings')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('month', prevMonth)
+        .eq('year', prevYear)
+        .single();
+
+    // If exists and is pending, return it
+    if (existingClosing) {
+        if (existingClosing.status === 'pending') {
+            return { hasClosing: true, closing: existingClosing };
+        }
+        // Already reviewed or skipped
+        return { hasClosing: false };
+    }
+
+    // 2. If not exists, calculate surplus for previous month
+    // Get financial status for previous month
+    const { getAccountStatement } = await import('./financial');
+
+    // We need to aggregate ALL accounts (except savings)
+    const { data: accounts } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('user_id', user.id)
+        .neq('type', 'savings'); // Exclude savings/investments from "surplus" calculation
+
+    if (!accounts || accounts.length === 0) return { hasClosing: false };
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    // Simpler aggregation query
+    const startDate = new Date(prevYear, prevMonth - 1, 1).toISOString().split('T')[0];
+    const endDate = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0];
+
+    const { data: movements } = await supabase
+        .from('movements')
+        .select('amount, type, is_loan, is_reserve, is_reimbursement, is_paid')
+        .eq('user_id', user.id)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .eq('is_paid', true);
+
+    if (movements) {
+        movements.forEach(m => {
+            if (m.type === 'income') totalIncome += m.amount;
+            if (m.type === 'expense') totalExpense += m.amount;
+        });
+    }
+
+    const surplus = totalIncome - totalExpense;
+
+    // Only create closing if there is a POSITIVE surplus
+    if (surplus > 0) {
+        const { data: newClosing, error } = await supabase
+            .from('monthly_closings')
+            .insert({
+                user_id: user.id,
+                month: prevMonth,
+                year: prevYear,
+                status: 'pending',
+                surplus_amount: surplus
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Error creating monthly closing:", error);
+            return { hasClosing: false, error: error.message };
+        }
+
+        return { hasClosing: true, closing: newClosing };
+    }
+
+    // If negative or zero, create a 'skipped' record so we don't check again
+    await supabase.from('monthly_closings').insert({
+        user_id: user.id,
+        month: prevMonth,
+        year: prevYear,
+        status: 'skipped',
+        surplus_amount: surplus
+    });
+
+    return { hasClosing: false };
+}
+
+/**
+ * Process the user's decision for the monthly closing
+ */
+export async function processMonthlyClosing(params: {
+    closingId: string;
+    action: 'saved_to_reserve' | 'kept_in_account' | 'distributed';
+    destinationId?: string; // Reserve ID if saved_to_reserve
+}): Promise<{ success: boolean; error?: string }> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const { closingId, action, destinationId } = params;
+
+    // 1. Get closing record
+    const { data: closing } = await supabase
+        .from('monthly_closings')
+        .select('*')
+        .eq('id', closingId)
+        .single();
+
+    if (!closing) return { success: false, error: "Closing not found" };
+
+    // 2. Perform action
+    if (action === 'saved_to_reserve' && destinationId) {
+        // Create transfer to reserve
+        const { createMovement } = await import('./finance-core');
+        const { getDefaultAccount } = await import('./assets');
+        const defaultAccount = await getDefaultAccount();
+
+        if (defaultAccount) {
+            const { data: reserve } = await supabase.from('reserves').select('name').eq('id', destinationId).single();
+            const reserveName = reserve?.name || 'Reserva';
+
+            await createMovement({
+                description: `Sobra de ${closing.month}/${closing.year} para ${reserveName}`,
+                amount: closing.surplus_amount,
+                type: 'expense', // Expense from account -> Reserve
+                date: new Date().toISOString().split('T')[0],
+                accountId: defaultAccount.id,
+                isPaid: true,
+                isReserve: true,
+                reserveId: destinationId
+            });
+        }
+    }
+
+    // 3. Update closing status
+    const { error } = await supabase
+        .from('monthly_closings')
+        .update({
+            status: 'reviewed',
+            action_taken: action
+        })
+        .eq('id', closingId);
+
+    if (error) return { success: false, error: error.message };
+
+    return { success: true };
+}

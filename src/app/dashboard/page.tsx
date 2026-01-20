@@ -10,6 +10,9 @@ import { Movement, Account } from "../types";
 import { cn } from "../lib/utils";
 import Link from "next/link";
 import { InfoButton } from "../components/InfoButton";
+import MonthlyClosingModal from "../components/MonthlyClosingModal";
+import { checkAndCreateMonthlyClosing } from "../actions/financial";
+import { MonthlyClosing } from "../types";
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -25,6 +28,22 @@ export default function DashboardPage() {
     const [currentDate, setCurrentDate] = useState<{ month: number, year: number } | null>(null);
     const [userLevel, setUserLevel] = useState(0);
     const [pendingSummary, setPendingSummary] = useState({ totalPayable: 0, totalReceivable: 0, countPayable: 0, countReceivable: 0 });
+    const [monthlyClosing, setMonthlyClosing] = useState<MonthlyClosing | null>(null);
+
+    useEffect(() => {
+        checkClosing();
+    }, []);
+
+    const checkClosing = async () => {
+        try {
+            const result = await checkAndCreateMonthlyClosing();
+            if (result.hasClosing && result.closing) {
+                setMonthlyClosing(result.closing);
+            }
+        } catch (e) {
+            console.error("Error checking monthly closing:", e);
+        }
+    };
 
     useEffect(() => {
         const now = new Date();
@@ -100,6 +119,12 @@ export default function DashboardPage() {
 
     return (
         <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+            {monthlyClosing && (
+                <MonthlyClosingModal
+                    closing={monthlyClosing}
+                    onClose={() => setMonthlyClosing(null)}
+                />
+            )}
             {/* Header */}
             <div className="flex items-center gap-3">
                 <div className="p-3 bg-green-500/10 rounded-xl border border-green-500/20">

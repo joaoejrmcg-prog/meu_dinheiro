@@ -53,6 +53,18 @@ export interface Loan {
     interest_rate?: number;
     due_date?: string;
     created_at: string;
+
+}
+
+export interface MonthlyClosing {
+    id: string;
+    user_id: string;
+    month: number;
+    year: number;
+    status: 'pending' | 'reviewed' | 'skipped';
+    surplus_amount: number;
+    action_taken?: 'saved_to_reserve' | 'kept_in_account' | 'distributed';
+    created_at: string;
 }
 
 export interface Movement {

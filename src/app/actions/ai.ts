@@ -447,7 +447,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
 
 20. **ADD_TO_GOAL** (Aportar/Guardar na meta)
    - **QUANDO USAR**: Quando o usuário quer guardar dinheiro em uma meta existente.
-   - **Gatilhos**: "Guardar X na meta Y", "Colocar X no Y", "Guardei X pro Y", "Vou reservar X pra Y"
+   - **Gatilhos**: "Guardar X na meta Y", "Guardar X pra Y", "Guardar X para Y", "Colocar X no Y", "Guardei X pro Y", "Guardei X pra Y", "Vou reservar X pra Y", "Separar X pro Y"
    - **SLOTS**:
      1. \`amount\` (OBRIGATÓRIO - Valor a guardar)
      2. \`search_term\` (OBRIGATÓRIO - Nome ou parte do nome da meta)
@@ -455,6 +455,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
    - **LÓGICA ESPECIAL**: Se a meta não for encontrada, retorne CONFIRMATION_REQUIRED perguntando se o usuário quer criar uma nova meta com esse nome.
    - **Exemplos**:
      - "Guardar 200 na Viagem" → ADD_TO_GOAL, amount: 200, search_term: "Viagem"
+     - "Guardei 200 pra viagem" → ADD_TO_GOAL, amount: 200, search_term: "viagem"
      - "Guardei 100 pro presente da Clarinha" → ADD_TO_GOAL, amount: 100, search_term: "presente da Clarinha"
      - "Vou colocar 500 no cofrinho do carro" → ADD_TO_GOAL, amount: 500, search_term: "carro"
 
@@ -1917,7 +1918,7 @@ export async function processCommand(input: string, history: string[] = [], inpu
 
         // 2. Update goal balance - REMOVED because createMovement already handles it via isReserve flag
         // const result = await addToReserve(goal.id, d.amount);
-        
+
         // Fetch updated goal to show correct balance
         const updatedGoals = await getReserves();
         const updatedGoal = updatedGoals.find(g => g.id === goal.id) || goal;
