@@ -27,14 +27,35 @@
     - [x] Implementar handler com slot-filling
     - [x] Criar movimento financeiro automático
     - [x] Atualizar `RECONCILE_PAYMENT` para pagar empréstimos
-- [ ] **Metas (Goals)**
-    - [ ] Adicionar intent `CREATE_GOAL`
-    - [ ] Adicionar intent `ADD_TO_GOAL`
-    - [ ] Implementar handlers
-- [ ] **Previsão (Forecast)**
-    - [ ] Criar action `calculateForecast`
-    - [ ] Adicionar intent `GET_FORECAST`
+- [x] **Metas (Goals)**
+    - [x] Adicionar intent `CREATE_GOAL`
+    - [x] Adicionar intent `ADD_TO_GOAL`
+    - [x] Implementar handlers
+- [x] **Previsão (Forecast)**
+    - [x] Criar action `calculateForecast`
+    - [x] Adicionar intent `GET_FORECAST`
+    - [x] Adicionar intent `PROJECT_GOAL`
 
 ## Verificação
 - [x] Build passou com sucesso
 - [ ] Testar fluxo completo do tutorial
+- [ ] **Verificação de Funcionalidades**
+    - [x] Previsão Financeira (Forecast)
+    - [x] Cartões de Crédito (Criação, Fatura, Parcelamento)
+
+## Implementação: Consultas de Cartão de Crédito
+- [x] **Novos Intents no SYSTEM_INSTRUCTION**
+    - [x] `GET_INVOICE` - Consultar valor da fatura
+    - [x] `GET_BEST_CARD` - Melhor cartão para comprar hoje
+    - [x] `GET_CARD_LIMITS` - Limites disponíveis
+- [x] **Funções de Suporte (`assets.ts` / `financial.ts`)**
+    - [x] `getInvoiceDetails(cardId, month, year)`
+    - [x] `getBestCardToBuy()`
+    - [x] `getCardLimits()`
+- [x] **Handlers em `ai.ts`**
+    - [x] Handler GET_INVOICE
+    - [x] Handler GET_BEST_CARD
+    - [x] Handler GET_CARD_LIMITS
+- [x] **Recorrência no Cartão**
+    - [x] Atualizar `CREATE_RECURRENCE` para aceitar `card_name`
+    - [x] Calcular `due_date` baseado no vencimento do cartão

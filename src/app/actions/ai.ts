@@ -247,6 +247,56 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`account_type\`: Tipo da conta - "bank" (padrão) ou "savings".
    - **Ação**: Cria a conta e confirma para o usuário.
 
+10b. **CREATE_CREDIT_CARD** (Criar cartão de crédito) ⚠️ DIFERENTE DE CONTA!
+   - **QUANDO USAR**: Quando o usuário quer criar um CARTÃO DE CRÉDITO (não conta corrente).
+   - **Gatilhos**:
+     - "Criar cartão X"
+     - "Cadastrar cartão X"
+     - "Quero adicionar meu cartão X"
+     - "Cartão X com fechamento dia Y e vencimento dia Z"
+   - **Exemplos**:
+     - "Criar cartão Nubank com fechamento dia 10 e vencimento dia 17" → CREATE_CREDIT_CARD, card_name: "Nubank", closing_day: 10, due_day: 17
+     - "Quero cadastrar meu cartão Itaú" → CREATE_CREDIT_CARD, card_name: "Itaú" (perguntar fechamento e vencimento)
+   - **Slots**:
+     - \`card_name\`: Nome do cartão (OBRIGATÓRIO).
+     - \`closing_day\`: Dia do fechamento da fatura (OBRIGATÓRIO).
+     - \`due_day\`: Dia do vencimento da fatura (OBRIGATÓRIO).
+     - \`limit_amount\`: Limite do cartão (OPCIONAL).
+   - **Ação**: Cria o cartão de crédito e confirma.
+
+10c. **GET_INVOICE** (Consultar fatura do cartão)
+   - **QUANDO USAR**: Quando o usuário quer saber o valor da fatura (aberta ou de um mês específico).
+   - **Gatilhos**:
+     - "Quanto tá a fatura do X?"
+     - "Fatura do X mês que vem"
+     - "Quanto veio a fatura do X em Dezembro?"
+     - "Total dos meus cartões esse mês"
+   - **Exemplos**:
+     - "Quanto tá minha fatura do Nubank?" → GET_INVOICE, card_name: "Nubank"
+     - "Fatura do Itaú em Janeiro" → GET_INVOICE, card_name: "Itaú", target_month: 1
+     - "Quanto vou gastar em todos os cartões?" → GET_INVOICE, all_cards: true
+   - **Slots**:
+     - \`card_name\`: Nome do cartão (OPCIONAL se all_cards=true).
+     - \`target_month\`: Mês da fatura 1-12 (OPCIONAL, padrão=próxima fatura).
+     - \`all_cards\`: Se true, soma todas as faturas.
+   - **Ação**: Retorna valor da fatura e data de vencimento.
+
+10d. **GET_BEST_CARD** (Qual cartão usar hoje)
+   - **QUANDO USAR**: Quando o usuário quer saber qual cartão é melhor para comprar agora.
+   - **Gatilhos**:
+     - "Qual cartão devo usar hoje?"
+     - "Qual o melhor cartão pra comprar agora?"
+     - "Qual cartão tem a melhor data?"
+   - **Ação**: Calcula qual cartão acabou de virar a fatura (mais tempo até pagar).
+
+10e. **GET_CARD_LIMITS** (Limite disponível nos cartões)
+   - **QUANDO USAR**: Quando o usuário pergunta sobre limite de crédito.
+   - **Gatilhos**:
+     - "Qual cartão tem mais limite?"
+     - "Quanto de limite eu tenho?"
+     - "Quanto sobra no meu cartão?"
+   - **Ação**: Retorna (Limite - Fatura Atual) para cada cartão.
+
 11. **CREATE_RECURRENCE** (Criar conta recorrente/mensal)
    - **QUANDO USAR**: Quando o usuário menciona "TODO dia X", "toda semana", "mensal", "todo mês".
    - **Gatilhos**:
@@ -254,10 +304,12 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Pago X todo mês dia Y"
      - "Recebo salário todo dia Y"
      - "Conta de X é mensal, dia Y"
+     - "Netflix de X todo dia Y no Nubank"
    - **Exemplos**:
      - "Conta de luz vence todo dia 10" → CREATE_RECURRENCE, description: "Conta de luz", due_day: 10, type: "expense"
      - "Recebo salário todo dia 5" → CREATE_RECURRENCE, description: "Salário", due_day: 5, type: "income"
      - "Aluguel de 1500 todo dia 10" → CREATE_RECURRENCE, description: "Aluguel", due_day: 10, amount: 1500, type: "expense"
+     - "Spotify de 21,90 todo dia 5 no Nubank" → CREATE_RECURRENCE, description: "Spotify", due_day: 5, amount: 21.90, card_name: "Nubank"
    - **IMPORTANTE**: NÃO exija valor para recorrências. Se o usuário não mencionar, registre com \`amount: 0\`.
    - **Slots**:
      - \`description\`: Nome da conta (ex: "Conta de luz", "Aluguel", "Salário").
@@ -265,6 +317,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`amount\`: Valor (OPCIONAL - usar 0 se não informado).
      - \`type\`: 'income' | 'expense'.
      - \`frequency\`: 'monthly' (padrão) | 'weekly'.
+     - \`card_name\`: Nome do cartão (OPCIONAL).
     - **Ação**: Cria uma recorrência que aparecerá no calendário todo mês.
 
 11. **DELETE_RECURRENCE** (Cancelar/excluir conta recorrente)
@@ -513,6 +566,29 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
    - **Exemplos**:
      - "Excluir meta Viagem" → DELETE_GOAL, search_term: "Viagem"
      - "Apagar meta presente da Clarinha" → DELETE_GOAL, search_term: "presente da Clarinha"
+
+26. **GET_FORECAST** (Previsão financeira)
+   - **QUANDO USAR**: Quando o usuário quer saber como estará o saldo no futuro.
+   - **Gatilhos**: "Como vai estar meu saldo?", "Previsão", "Vou ter dinheiro?", "Como estarei em dezembro?", "Minha previsão", "Projeção", "Quanto vou ter mês que vem?"
+   - **SLOTS**:
+     1. \`months\` (OPCIONAL - Quantos meses projetar, default: 6)
+     2. \`target_month\` (OPCIONAL - Mês específico. Ex: "dezembro", "março")
+   - **Exemplos**:
+     - "Como vai estar meu saldo mês que vem?" → GET_FORECAST
+     - "Vou ter dinheiro pro Natal?" → GET_FORECAST, target_month: "dezembro"
+     - "Previsão para os próximos 3 meses" → GET_FORECAST, months: 3
+
+27. **PROJECT_GOAL** (Projeção de meta)
+   - **QUANDO USAR**: Quando o usuário quer saber quanto tempo para atingir uma meta OU quanto precisa guardar por mês.
+   - **Gatilhos**: "Em quanto tempo atinjo a meta?", "Quanto preciso guardar?", "Quando vou atingir?", "Simular meta"
+   - **SLOTS**:
+     1. \`search_term\` (OBRIGATÓRIO - Nome da meta)
+     2. \`monthly_contribution\` (OPCIONAL - Aporte mensal para cálculo de tempo)
+     3. \`question_type\` ('time' | 'contribution') - 'time' = perguntar tempo, 'contribution' = perguntar valor mensal
+   - **Exemplos**:
+     - "Em quanto tempo atinjo a meta Carro guardando 500 por mês?" → PROJECT_GOAL, search_term: "Carro", monthly_contribution: 500, question_type: "time"
+     - "Quanto preciso guardar pra atingir a Viagem?" → PROJECT_GOAL, search_term: "Viagem", question_type: "contribution"
+     - "Se eu guardar 300 por mês, quando atinjo a reserva de emergência?" → PROJECT_GOAL, search_term: "reserva de emergência", monthly_contribution: 300, question_type: "time"
 
 ### REGRAS CRÍTICAS DE SLOT-FILLING (LEIA COM ATENÇÃO):
 
@@ -1317,18 +1393,87 @@ export async function processCommand(input: string, history: string[] = [], inpu
     const d = parsedResponse.data;
     if (d.description && d.due_day) {
       const { createRecurrence } = await import('./financial');
+      const { getCardByName, getAccountByName } = await import('./assets');
+
+      let cardId: string | undefined = undefined;
+      let accountId: string | undefined = undefined;
+      let locationName = '';
+
+      // Check for Credit Card
+      if (d.card_name) {
+        const card = await getCardByName(d.card_name);
+        if (card) {
+          cardId = card.id;
+          locationName = ` no cartão ${card.name}`;
+        } else {
+          finalMessage = `❌ Não encontrei o cartão "${d.card_name}".`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
+      // Check for Bank Account (only if not card)
+      else if (d.account_name) {
+        const account = await getAccountByName(d.account_name);
+        if (account) {
+          accountId = account.id;
+          locationName = ` na conta ${account.name}`;
+        } else {
+          finalMessage = `❌ Não encontrei a conta "${d.account_name}".`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
 
       // Calculate next due date
       const now = new Date();
       const currentDay = now.getDate();
       let nextDueDate: Date;
+      let displayDayLabel: string;
 
-      if (d.due_day > currentDay) {
-        // This month
-        nextDueDate = new Date(now.getFullYear(), now.getMonth(), d.due_day);
+      if (cardId) {
+        // For credit card recurrences: use the card's due date
+        // Get the card to know its due_day
+        const { getCreditCards } = await import('./assets');
+        const cards = await getCreditCards();
+        const card = cards.find(c => c.id === cardId);
+
+        if (card) {
+          // Calculate next invoice due date (same logic as getInvoiceDetails)
+          let targetMonth = now.getMonth() + 1;
+          let targetYear = now.getFullYear();
+
+          // If we're past the due date, use next month
+          if (currentDay > card.due_day) {
+            targetMonth = targetMonth + 1;
+            if (targetMonth > 12) {
+              targetMonth = 1;
+              targetYear = targetYear + 1;
+            }
+          }
+
+          nextDueDate = new Date(targetYear, targetMonth - 1, card.due_day);
+          displayDayLabel = `vencimento dia ${card.due_day}`;
+        } else {
+          // Fallback if card not found
+          nextDueDate = new Date(now.getFullYear(), now.getMonth() + 1, 17);
+          displayDayLabel = `todo mês`;
+        }
       } else {
-        // Next month
-        nextDueDate = new Date(now.getFullYear(), now.getMonth() + 1, d.due_day);
+        // For regular recurrences: use the day specified by user
+        if (d.due_day > currentDay) {
+          nextDueDate = new Date(now.getFullYear(), now.getMonth(), d.due_day);
+        } else {
+          nextDueDate = new Date(now.getFullYear(), now.getMonth() + 1, d.due_day);
+        }
+        displayDayLabel = `todo dia ${d.due_day}`;
       }
 
       const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
@@ -1339,19 +1484,20 @@ export async function processCommand(input: string, history: string[] = [], inpu
           amount: d.amount || 0,
           type: d.type || 'expense',
           frequency: d.frequency || 'monthly',
-          next_due_date: nextDueDateStr
+          next_due_date: nextDueDateStr,
+          card_id: cardId,
+          account_id: accountId
         });
 
         const typeLabel = d.type === 'income' ? 'recebimento' : 'conta';
-        const dayLabel = d.due_day;
         const amountText = d.amount ? ` de R$ ${d.amount.toLocaleString('pt-BR')}` : '';
 
-        finalMessage = `✅ ${typeLabel === 'conta' ? 'Conta' : 'Recebimento'} recorrente criado! "${d.description}"${amountText} vai aparecer no calendário todo dia ${dayLabel}.`;
+        finalMessage = `✅ Conta recorrente criada! \"${d.description}\"${amountText}${locationName}, ${displayDayLabel}.`;
       } catch (e: any) {
         finalMessage = `❌ Erro ao criar recorrência: ${e.message}`;
       }
     } else {
-      finalMessage = `❌ Não entendi. Tente: "Conta de luz vence todo dia 10".`;
+      finalMessage = `❌ Não entendi. Tente: \"Conta de luz vence todo dia 10\".`;
     }
   }
 
@@ -1421,6 +1567,38 @@ export async function processCommand(input: string, history: string[] = [], inpu
         }
       } else {
         finalMessage = `❌ Erro ao criar parcelamento: ${result.error}`;
+      }
+    }
+  }
+
+  // Handle CREATE_CREDIT_CARD - create a new credit card
+  if (parsedResponse.intent === 'CREATE_CREDIT_CARD') {
+    const d = parsedResponse.data;
+
+    // Validate required fields
+    if (!d.card_name) {
+      finalMessage = `❓ Qual o nome do cartão?`;
+    } else if (!d.closing_day || !d.due_day) {
+      finalMessage = `❓ Qual o dia de fechamento e vencimento do cartão ${d.card_name}?`;
+    } else {
+      const { createCreditCard } = await import('./assets');
+
+      try {
+        const card = await createCreditCard({
+          name: d.card_name,
+          closing_day: d.closing_day,
+          due_day: d.due_day,
+          limit_amount: d.limit_amount
+        });
+
+        if (card && card.id) {
+          finalMessage = `✅ Cartão **${card.name}** criado! Fechamento no dia ${d.closing_day} e vencimento no dia ${d.due_day}.`;
+        } else {
+          finalMessage = `❌ Erro ao criar cartão: Retorno inesperado`;
+        }
+      } catch (error) {
+        console.error('[CREATE_CREDIT_CARD] Error:', error);
+        finalMessage = `❌ Erro ao criar cartão: ${error}`;
       }
     }
   }
@@ -2224,6 +2402,285 @@ export async function processCommand(input: string, history: string[] = [], inpu
           finalMessage = `❌ Erro ao excluir: ${error}`;
         }
       }
+    }
+  }
+
+  // Handle GET_FORECAST - Financial forecast for next months
+  if (parsedResponse.intent === 'GET_FORECAST') {
+    const d = parsedResponse.data;
+    const { calculateForecast } = await import('./forecast');
+
+    const months = d.months || 6;
+    console.log('[AI GET_FORECAST] Calling calculateForecast with months:', months);
+
+    const forecasts = await calculateForecast(months);
+    console.log('[AI GET_FORECAST] Got', forecasts.length, 'forecasts');
+
+    if (forecasts.length === 0) {
+      finalMessage = `📊 Não foi possível gerar a previsão. Verifique se você tem contas ou receitas cadastradas.`;
+    } else {
+      // If user asked about specific month
+      if (d.target_month) {
+        const monthMap: { [key: string]: number } = {
+          'janeiro': 0, 'fevereiro': 1, 'março': 2, 'abril': 3, 'maio': 4, 'junho': 5,
+          'julho': 6, 'agosto': 7, 'setembro': 8, 'outubro': 9, 'novembro': 10, 'dezembro': 11
+        };
+        const targetMonthNum = monthMap[d.target_month.toLowerCase()];
+
+        if (targetMonthNum !== undefined) {
+          const targetForecast = forecasts.find(f => {
+            const fMonth = parseInt(f.month.split('-')[1]) - 1;
+            return fMonth === targetMonthNum;
+          });
+
+          if (targetForecast) {
+            const balanceStr = targetForecast.projectedBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const incomeStr = targetForecast.income.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const expenseStr = targetForecast.expense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            const statusIcon = targetForecast.projectedBalance >= 0 ? '✅' : '⚠️';
+            finalMessage = `🔮 **Previsão para ${targetForecast.monthLabel}**\n\n` +
+              `${statusIcon} Saldo projetado: **${balanceStr}**\n\n` +
+              `📈 Entradas: ${incomeStr}\n📉 Saídas: ${expenseStr}`;
+          } else {
+            finalMessage = `📅 ${d.target_month} está fora do período de projeção (${forecasts[0].monthLabel} a ${forecasts[forecasts.length - 1].monthLabel}).`;
+          }
+        } else {
+          // Month not recognized, show general forecast
+          finalMessage = `❓ Não reconheci o mês "${d.target_month}". Vou mostrar a previsão geral.`;
+        }
+      }
+
+      // General forecast (if no specific month or need to show general after unrecognized month)
+      // Note: We need to override finalMessage because Gemini may have set a default message
+      if (!d.target_month) {
+        const warning = forecasts.find(f => f.projectedBalance < 0);
+
+        let forecastLines = forecasts.slice(0, 4).map(f => {
+          const balanceStr = f.projectedBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const icon = f.projectedBalance >= 0 ? '🟢' : '🔴';
+          return `${icon} **${f.monthLabel}**: ${balanceStr}`;
+        }).join('\n');
+
+        finalMessage = `🔮 **Previsão Financeira**\n\n${forecastLines}`;
+
+        if (warning) {
+          finalMessage += `\n\n⚠️ **Atenção**: Em **${warning.monthLabel}** seu saldo ficará negativo! Considere revisar suas despesas.`;
+        }
+
+        // Add savings rate insight
+        const avgIncome = forecasts.reduce((sum, f) => sum + f.income, 0) / forecasts.length;
+        const avgExpense = forecasts.reduce((sum, f) => sum + f.expense, 0) / forecasts.length;
+        const monthlyNet = avgIncome - avgExpense;
+
+        if (monthlyNet > 0) {
+          const netStr = monthlyNet.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          finalMessage += `\n\n💡 Você está economizando em média **${netStr}/mês**.`;
+        }
+      }
+    }
+  }
+
+  // Handle PROJECT_GOAL - Goal projection (time to reach or required contribution)
+  if (parsedResponse.intent === 'PROJECT_GOAL') {
+    const d = parsedResponse.data;
+
+    if (!d.search_term) {
+      finalMessage = `🎯 Qual meta você quer analisar?`;
+    } else {
+      const { findGoalByName, projectGoalTime, calculateRequiredContribution } = await import('./forecast');
+      const { getReserves } = await import('./planning');
+
+      // Find goal
+      const goals = await getReserves();
+      const goal = goals.find(g =>
+        g.name.toLowerCase().includes(d.search_term.toLowerCase()) ||
+        d.search_term.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!goal) {
+        finalMessage = `📝 Não encontrei a meta "${d.search_term}".`;
+      } else if (!goal.target_amount || goal.target_amount <= 0) {
+        finalMessage = `📝 A meta "${goal.name}" não tem valor alvo definido. Defina um valor com: "Alterar valor da ${goal.name} pra X"`;
+      } else if (goal.current_amount >= goal.target_amount) {
+        finalMessage = `🎉 Parabéns! A meta "${goal.name}" já foi atingida!`;
+      } else {
+        const remaining = goal.target_amount - goal.current_amount;
+        const remainingStr = remaining.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const targetStr = goal.target_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const currentStr = goal.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        if (d.question_type === 'contribution' || (!d.monthly_contribution && goal.deadline)) {
+          // Calculate required monthly contribution
+          const projection = await calculateRequiredContribution(goal.id);
+
+          if (projection?.requiredMonthlyContribution) {
+            const monthlyStr = projection.requiredMonthlyContribution.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            finalMessage = `🎯 **${goal.name}**\n\n` +
+              `💰 Atual: ${currentStr} de ${targetStr}\n` +
+              `📅 Prazo: ${goal.deadline}\n\n` +
+              `💵 Para atingir no prazo, você precisa guardar **${monthlyStr}/mês**.`;
+          } else {
+            finalMessage = `📅 A meta "${goal.name}" não tem prazo definido.\n\n💡 Para definir, diga: "Alterar prazo da ${goal.name} para Dezembro de 2026"`;
+          }
+        } else if (d.monthly_contribution && d.monthly_contribution > 0) {
+          // Calculate time to reach with given contribution
+          const projection = await projectGoalTime(goal.id, d.monthly_contribution);
+
+          if (projection?.monthsToReach && projection?.estimatedDate) {
+            const monthlyStr = d.monthly_contribution.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            finalMessage = `🎯 **${goal.name}**\n\n` +
+              `💰 Atual: ${currentStr} de ${targetStr}\n` +
+              `📊 Faltam: ${remainingStr}\n\n` +
+              `⏱️ Guardando **${monthlyStr}/mês**, você atinge em **${projection.monthsToReach} meses** (${projection.estimatedDate}).`;
+          } else {
+            finalMessage = `❌ Não foi possível calcular a projeção.`;
+          }
+        } else {
+          // Ask for monthly contribution
+          finalMessage = `🎯 **${goal.name}**\n\n` +
+            `💰 Atual: ${currentStr}\n` +
+            `🎯 Meta: ${targetStr}\n` +
+            `📊 Faltam: ${remainingStr}\n\n` +
+            `❓ Quanto você pretende guardar por mês?`;
+
+          return {
+            intent: 'CONFIRMATION_REQUIRED' as IntentType,
+            data: {
+              originalIntent: 'PROJECT_GOAL',
+              search_term: d.search_term,
+              question_type: 'time'
+            },
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
+    }
+  }
+
+  // Handle GET_INVOICE - Consultar fatura do cartão
+  if (parsedResponse.intent === 'GET_INVOICE') {
+    const d = parsedResponse.data;
+    const { getInvoiceDetails, getCreditCards, getCardByName } = await import('./assets');
+
+    if (d.all_cards) {
+      // Sum all card invoices
+      const cards = await getCreditCards();
+      if (!cards || cards.length === 0) {
+        finalMessage = `💳 Você ainda não tem cartões cadastrados.`;
+      } else {
+        let totalAll = 0;
+        const lines: string[] = [];
+        for (const card of cards) {
+          try {
+            const invoice = await getInvoiceDetails(card.id, d.target_month);
+            totalAll += invoice.total;
+            if (invoice.total > 0) {
+              lines.push(`• ${card.name}: ${invoice.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (vence ${invoice.dueDate.split('-').reverse().join('/')})`);
+            }
+          } catch (e) {
+            console.error(`Error getting invoice for card ${card.name}:`, e);
+          }
+        }
+        const totalStr = totalAll.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        finalMessage = `💳 **Faturas dos Cartões**\n\n${lines.join('\n')}\n\n**Total: ${totalStr}**`;
+      }
+    } else if (d.card_name) {
+      // Specific card
+      const card = await getCardByName(d.card_name);
+      if (!card) {
+        finalMessage = `❌ Não encontrei o cartão "${d.card_name}".`;
+      } else {
+        try {
+          const invoice = await getInvoiceDetails(card.id, d.target_month);
+          const totalStr = invoice.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const dueStr = invoice.dueDate.split('-').reverse().join('/');
+          finalMessage = `💳 **Fatura ${invoice.cardName}**\n\n💰 Total: **${totalStr}**\n📅 Vencimento: ${dueStr}`;
+
+          if (invoice.purchases.length > 0 && invoice.purchases.length <= 5) {
+            finalMessage += `\n\n📋 **Compras:**\n${invoice.purchases.map(p => `• ${p.description}: ${p.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`).join('\n')}`;
+          } else if (invoice.purchases.length > 5) {
+            finalMessage += `\n\n📋 ${invoice.purchases.length} compras nesta fatura.`;
+          }
+        } catch (e) {
+          finalMessage = `❌ Erro ao consultar fatura: ${e}`;
+        }
+      }
+    } else {
+      // Default card
+      const { getDefaultCard } = await import('./assets');
+      const defaultCard = await getDefaultCard();
+      if (!defaultCard) {
+        finalMessage = `💳 Você não tem um cartão principal definido. Me diz qual cartão quer consultar?`;
+      } else {
+        try {
+          const invoice = await getInvoiceDetails(defaultCard.id, d.target_month);
+          const totalStr = invoice.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const dueStr = invoice.dueDate.split('-').reverse().join('/');
+          finalMessage = `💳 **Fatura ${invoice.cardName}**\n\n💰 Total: **${totalStr}**\n📅 Vencimento: ${dueStr}`;
+        } catch (e) {
+          finalMessage = `❌ Erro ao consultar fatura: ${e}`;
+        }
+      }
+    }
+  }
+
+  // Handle GET_BEST_CARD - Qual cartão usar hoje
+  if (parsedResponse.intent === 'GET_BEST_CARD') {
+    const { getBestCardToBuy } = await import('./assets');
+
+    try {
+      const result = await getBestCardToBuy();
+
+      if (!result.bestCard) {
+        finalMessage = `💳 ${result.reason}`;
+      } else {
+        const lines = result.allCards.map(c =>
+          `• **${c.card.name}**: fecha dia ${c.card.closing_day}, vence dia ${c.card.due_day} (~${c.daysUntilDue} dias pra pagar)`
+        );
+        finalMessage = `💡 **${result.bestCard.name}** é a melhor opção agora!\n\n${result.reason}\n\n📋 **Seus cartões:**\n${lines.join('\n')}`;
+      }
+    } catch (e) {
+      finalMessage = `❌ Erro ao calcular melhor cartão: ${e}`;
+    }
+  }
+
+  // Handle GET_CARD_LIMITS - Limite disponível nos cartões
+  if (parsedResponse.intent === 'GET_CARD_LIMITS') {
+    const { getCardLimits } = await import('./assets');
+
+    try {
+      const result = await getCardLimits();
+
+      if (result.cards.length === 0) {
+        finalMessage = `💳 Você ainda não tem cartões cadastrados.`;
+      } else {
+        const lines = result.cards.map(c => {
+          const usedStr = c.currentInvoice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          if (c.limitTotal > 0) {
+            // Has limit configured
+            const availStr = c.available.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const limitStr = c.limitTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const pct = Math.round((c.currentInvoice / c.limitTotal) * 100);
+            return `• **${c.card.name}**: ${availStr} disponível (${pct}% usado de ${limitStr})`;
+          } else {
+            // No limit configured - just show spent
+            return `• **${c.card.name}**: Gastos ${usedStr} (sem limite cadastrado)`;
+          }
+        });
+
+        if (result.totalLimit > 0) {
+          const totalAvailStr = result.totalAvailable.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          finalMessage = `💳 **Limites Disponíveis**\n\n${lines.join('\n')}\n\n✨ **Total livre: ${totalAvailStr}**`;
+        } else {
+          const totalUsedStr = result.totalUsed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          finalMessage = `💳 **Gastos nos Cartões**\n\n${lines.join('\n')}\n\n💡 Para cadastrar limites, diga: "O limite do [cartão] é [valor]"`;
+        }
+      }
+    } catch (e) {
+      finalMessage = `❌ Erro ao consultar limites: ${e}`;
     }
   }
 

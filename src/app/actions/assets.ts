@@ -605,3 +605,262 @@ export async function recalculateAccountBalance(accountId: string): Promise<{ su
 
     return { success: true };
 }
+
+// ============ CREDIT CARD QUERIES (INVOICE & LIMITS) ============
+
+/**
+ * Get invoice details for a specific card and month/year
+ * Returns total amount, breakdown by purchase, and due date
+ */
+export async function getInvoiceDetails(
+    cardId: string,
+    month?: number,
+    year?: number
+): Promise<{
+    total: number;
+    dueDate: string;
+    purchases: { description: string; amount: number; date: string }[];
+    cardName: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // Default to NEXT invoice if not specified
+    // Logic: If today > due_day of current month, show next month's invoice
+    const now = new Date();
+    let targetMonth = month ?? now.getMonth() + 1;
+    let targetYear = year ?? now.getFullYear();
+
+    // Get card info first to know due_day
+    const { data: card } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('id', cardId)
+        .single();
+
+    if (!card) throw new Error("Cartão não encontrado");
+
+    // If no specific month requested, determine the "current" invoice intelligently
+    if (!month) {
+        const currentDay = now.getDate();
+        // If we're past the due date, user wants the NEXT invoice (next month)
+        if (currentDay > card.due_day) {
+            targetMonth = targetMonth + 1;
+            if (targetMonth > 12) {
+                targetMonth = 1;
+                targetYear = targetYear + 1;
+            }
+        }
+    }
+
+    // Calculate the invoice period based on closing day
+    // Invoice includes purchases from (closing_day of previous month + 1) to (closing_day of current month)
+    const closingDay = card.closing_day;
+    const dueDay = card.due_day;
+
+    // Start date: previous month's closing day + 1
+    const startDate = new Date(targetYear, targetMonth - 2, closingDay + 1);
+    // End date: current month's closing day
+    const endDate = new Date(targetYear, targetMonth - 1, closingDay);
+    // Due date for this invoice
+    const dueDateObj = new Date(targetYear, targetMonth - 1, dueDay);
+
+    // Get all movements on this card that are DUE within this invoice period
+    // Use due_date (not date) to correctly capture installments by their due month
+    const dueStart = new Date(targetYear, targetMonth - 1, 1); // First day of invoice month
+    const dueEnd = new Date(targetYear, targetMonth, 0); // Last day of invoice month
+
+    const { data: movements } = await supabase
+        .from('movements')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('card_id', cardId)
+        .gte('due_date', dueStart.toISOString().split('T')[0])
+        .lte('due_date', dueEnd.toISOString().split('T')[0])
+        .order('due_date', { ascending: true });
+
+    const purchases = (movements || []).map(m => ({
+        description: m.description,
+        amount: Number(m.amount),
+        date: m.date
+    }));
+
+    const total = purchases.reduce((sum, p) => sum + p.amount, 0);
+
+    return {
+        total,
+        dueDate: dueDateObj.toISOString().split('T')[0],
+        purchases,
+        cardName: card.name
+    };
+}
+
+/**
+ * Get the best card to use today based on invoice closing dates
+ * Returns the card with the longest time until payment (furthest due date)
+ * 
+ * Logic:
+ * - If today > closing_day, purchase goes to NEXT month's invoice
+ * - The due_date for that invoice is in the month AFTER closing
+ */
+export async function getBestCardToBuy(): Promise<{
+    bestCard: CreditCard | null;
+    reason: string;
+    allCards: { card: CreditCard; daysUntilDue: number; daysUntilClose: number; nextDueDate: Date }[];
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { bestCard: null, reason: "Usuário não autenticado", allCards: [] };
+
+    const { data: cards } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('user_id', user.id);
+
+    if (!cards || cards.length === 0) {
+        return { bestCard: null, reason: "Você não tem cartões cadastrados", allCards: [] };
+    }
+
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    const cardsWithDays = cards.map(card => {
+        // Calculate which invoice a purchase TODAY would go into
+        let invoiceMonth: number;
+        let invoiceYear: number;
+
+        if (currentDay <= card.closing_day) {
+            // Purchase goes to THIS month's closing (due this month or next)
+            invoiceMonth = currentMonth;
+            invoiceYear = currentYear;
+        } else {
+            // Purchase goes to NEXT month's closing
+            invoiceMonth = currentMonth + 1;
+            invoiceYear = currentYear;
+            if (invoiceMonth > 11) {
+                invoiceMonth = 0;
+                invoiceYear++;
+            }
+        }
+
+        // Due date is in the month AFTER the closing month
+        let dueMonth = invoiceMonth + 1;
+        let dueYear = invoiceYear;
+        if (dueMonth > 11) {
+            dueMonth = 0;
+            dueYear++;
+        }
+
+        // But wait - if due_day < closing_day, due is in same month as closing
+        // Example: closes day 20, due day 5 → due day 5 of NEXT month
+        // Example: closes day 10, due day 17 → due day 17 of SAME month as closing
+        if (card.due_day > card.closing_day) {
+            // Due date is in the same month as closing
+            dueMonth = invoiceMonth;
+            dueYear = invoiceYear;
+        }
+
+        const nextDueDate = new Date(dueYear, dueMonth, card.due_day);
+
+        // Calculate days until due and close
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const daysUntilDue = Math.round((nextDueDate.getTime() - today.getTime()) / msPerDay);
+
+        // Days until close
+        const closeDate = new Date(invoiceYear, invoiceMonth, card.closing_day);
+        const daysUntilClose = Math.round((closeDate.getTime() - today.getTime()) / msPerDay);
+
+        return { card, daysUntilDue, daysUntilClose, nextDueDate };
+    });
+
+    // Sort by days until due descending (longest time = best card)
+    cardsWithDays.sort((a, b) => b.daysUntilDue - a.daysUntilDue);
+
+    const bestCard = cardsWithDays[0]?.card || null;
+    const bestDays = cardsWithDays[0]?.daysUntilDue || 0;
+    const reason = bestCard
+        ? `O **${bestCard.name}** te dá mais prazo: ${bestDays} dias até pagar!`
+        : "Nenhum cartão disponível";
+
+    return { bestCard, reason, allCards: cardsWithDays };
+}
+
+/**
+ * Get available credit limit for all cards
+ * Returns (total limit - current invoice amount) for each card
+ */
+export async function getCardLimits(): Promise<{
+    cards: {
+        card: CreditCard;
+        limitTotal: number;
+        currentInvoice: number;
+        available: number;
+    }[];
+    totalLimit: number;
+    totalUsed: number;
+    totalAvailable: number;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: cards } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('user_id', user.id);
+
+    if (!cards || cards.length === 0) {
+        return { cards: [], totalLimit: 0, totalUsed: 0, totalAvailable: 0 };
+    }
+
+    const now = new Date();
+    const results: { card: CreditCard; limitTotal: number; currentInvoice: number; available: number }[] = [];
+
+    for (const card of cards) {
+        // Calculate current invoice using due_date logic (same as getInvoiceDetails)
+        // Find movements that are due in the current or next month
+        const currentDay = now.getDate();
+        let targetMonth = now.getMonth() + 1;
+        let targetYear = now.getFullYear();
+
+        // If we're past the due date, look at next month's invoice
+        if (currentDay > card.due_day) {
+            targetMonth = targetMonth + 1;
+            if (targetMonth > 12) {
+                targetMonth = 1;
+                targetYear = targetYear + 1;
+            }
+        }
+
+        // Get movements due in that month
+        const dueStart = new Date(targetYear, targetMonth - 1, 1);
+        const dueEnd = new Date(targetYear, targetMonth, 0);
+
+        const { data: movements } = await supabase
+            .from('movements')
+            .select('amount')
+            .eq('user_id', user.id)
+            .eq('card_id', card.id)
+            .gte('due_date', dueStart.toISOString().split('T')[0])
+            .lte('due_date', dueEnd.toISOString().split('T')[0]);
+
+        const currentInvoice = (movements || []).reduce((sum, m) => sum + Number(m.amount), 0);
+        const limitTotal = card.limit_amount || 0;
+        const available = limitTotal > 0 ? Math.max(0, limitTotal - currentInvoice) : 0;
+
+        results.push({ card, limitTotal, currentInvoice, available });
+    }
+
+    // Sort by available descending
+    results.sort((a, b) => b.available - a.available);
+
+    const totalLimit = results.reduce((sum, r) => sum + r.limitTotal, 0);
+    const totalUsed = results.reduce((sum, r) => sum + r.currentInvoice, 0);
+    const totalAvailable = results.reduce((sum, r) => sum + r.available, 0);
+
+    return { cards: results, totalLimit, totalUsed, totalAvailable };
+}
+
