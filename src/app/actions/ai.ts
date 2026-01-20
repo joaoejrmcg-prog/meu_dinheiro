@@ -1915,16 +1915,20 @@ export async function processCommand(input: string, history: string[] = [], inpu
           reserveId: goal.id
         });
 
-        // 2. Update goal balance
-        const result = await addToReserve(goal.id, d.amount);
+        // 2. Update goal balance - REMOVED because createMovement already handles it via isReserve flag
+        // const result = await addToReserve(goal.id, d.amount);
+        
+        // Fetch updated goal to show correct balance
+        const updatedGoals = await getReserves();
+        const updatedGoal = updatedGoals.find(g => g.id === goal.id) || goal;
 
         const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const newBalance = result.newAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const newBalance = updatedGoal.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
         let progressStr = '';
-        if (goal.target_amount && goal.target_amount > 0) {
-          const percent = Math.round((result.newAmount / goal.target_amount) * 100);
-          const remaining = goal.target_amount - result.newAmount;
+        if (updatedGoal.target_amount && updatedGoal.target_amount > 0) {
+          const percent = Math.round((updatedGoal.current_amount / updatedGoal.target_amount) * 100);
+          const remaining = updatedGoal.target_amount - updatedGoal.current_amount;
           const remainingStr = remaining > 0
             ? `Faltam ${remaining.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
             : `Meta atingida! 🎉`;
