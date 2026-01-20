@@ -60,6 +60,7 @@ export async function createLoan(params: {
         return { success: false, error: 'Descrição, valor e tipo são obrigatórios.' };
     }
 
+    console.log('[LOANS_DB] Inserting loan:', { description, total_amount, remaining_amount: total_amount });
     const { data, error } = await supabase
         .from('loans')
         .insert({
@@ -73,6 +74,8 @@ export async function createLoan(params: {
         })
         .select()
         .single();
+    
+    if (data) console.log('[LOANS_DB] Loan created:', data);
 
     if (error) {
         console.error("Error creating loan:", error);
@@ -137,7 +140,7 @@ export async function registerLoanPayment(params: {
     amount: number;
     accountId?: string;
     date?: string;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; newRemainingAmount?: number }> {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: 'Unauthorized' };
@@ -242,5 +245,96 @@ export async function registerLoanPayment(params: {
         }
     }
 
-    return { success: true };
+    return { success: true, newRemainingAmount: newRemaining };
+}
+
+// ============ CREATE LOAN PAYMENT PLAN ============
+
+export async function createLoanPaymentPlan(params: {
+    installments: number;
+    installmentValue?: number;
+    dueDay: number;
+    loanType: 'taken' | 'given';
+    description: string;
+    loanId?: string;
+    totalAmount?: number;
+}): Promise<{ success: boolean; error?: string; calculatedValue?: number }> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: 'Unauthorized' };
+
+    const { installments, installmentValue, dueDay, loanType, description, loanId, totalAmount } = params;
+
+    // Determine movement type based on loan type
+    // For 'taken' loans: we pay back with expenses
+    // For 'given' loans: we receive back with income
+    const movementType = loanType === 'taken' ? 'expense' : 'income';
+
+    // Calculate installment value if not provided
+    let finalInstallmentValue = installmentValue;
+    if (!finalInstallmentValue && totalAmount && installments > 0) {
+        finalInstallmentValue = Math.round((totalAmount / installments) * 100) / 100;
+    }
+
+    // If still no value and we have a loanId, try to get from loan
+    if (!finalInstallmentValue && loanId) {
+        const { data: loan } = await supabase
+            .from('loans')
+            .select('remaining_amount')
+            .eq('id', loanId)
+            .single();
+
+        if (loan && installments > 0) {
+            finalInstallmentValue = Math.round((loan.remaining_amount / installments) * 100) / 100;
+        }
+    }
+
+    if (!finalInstallmentValue) {
+        return { success: false, error: 'Não foi possível calcular o valor da parcela. Informe o valor explicitamente.' };
+    }
+
+    const today = new Date();
+    const movements = [];
+
+    try {
+        for (let i = 0; i < installments; i++) {
+            // Calculate due date for each installment
+            const dueDate = new Date(today.getFullYear(), today.getMonth() + i + 1, dueDay);
+            const dueDateStr = dueDate.toISOString().split('T')[0];
+
+            const installmentDesc = installments === 1
+                ? `Pagamento: ${description}`
+                : `Pagamento: ${description} (${i + 1}/${installments})`;
+
+            const { data: movement, error: mvError } = await supabase
+                .from('movements')
+                .insert({
+                    user_id: user.id,
+                    description: installmentDesc,
+                    amount: finalInstallmentValue,
+                    type: movementType,
+                    date: today.toISOString().split('T')[0],
+                    due_date: dueDateStr,
+                    is_paid: false,
+                    account_id: null, // Pending - no account until paid
+                    is_loan: true,
+                    loan_id: loanId || null,
+                    is_reserve: false,
+                    is_reimbursement: false
+                })
+                .select()
+                .single();
+
+            if (mvError) throw mvError;
+            movements.push(movement);
+        }
+
+        console.log(`[LOAN_PAYMENT_PLAN] Created ${movements.length} payment movements for "${description}"`);
+
+        return { success: true, calculatedValue: finalInstallmentValue };
+
+    } catch (error: any) {
+        console.error("[LOAN_PAYMENT_PLAN] Error creating payment plan:", error);
+        return { success: false, error: error.message };
+    }
 }

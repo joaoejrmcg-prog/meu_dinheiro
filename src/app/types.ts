@@ -131,6 +131,13 @@ export type IntentType =
     | 'LIST_AUTO_DEBITS'
     | 'CREATE_INSTALLMENT'
     | 'CREDIT_CARD_PURCHASE'
+    | 'CREATE_LOAN'
+    | 'LOAN_ASK_PAYMENT_PLAN'
+    | 'LOAN_PAYMENT_PLAN'
+    | 'CREATE_GOAL'
+    | 'ADD_TO_GOAL'
+    | 'WITHDRAW_FROM_GOAL'
+    | 'CHECK_GOAL'
     | 'NAVIGATE'
     | 'UNKNOWN';
 

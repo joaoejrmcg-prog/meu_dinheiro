@@ -48,6 +48,7 @@ export function useCommandCenterLogic() {
     const [userPlan, setUserPlan] = useState<string>('trial');
     const [tutorialStep, setTutorialStep] = useState<TutorialStep>('IDLE');
     const [userLevel, setUserLevel] = useState<UserLevel>(0);
+    const [isLevelLoaded, setIsLevelLoaded] = useState(false);
     const [quickActions, setQuickActions] = useState<string[]>([]);
     const [l2BankName, setL2BankName] = useState<string>(''); // Store bank name for L2 tutorial
     const [l3CardName, setL3CardName] = useState<string>(''); // Store card name for L3 tutorial
@@ -59,7 +60,7 @@ export function useCommandCenterLogic() {
         amount?: number;
         date?: string;
         dueDate?: string;
-        type?: 'income' | 'expense';
+        type?: 'income' | 'expense' | 'taken' | 'given';
         category?: string;
         payment_method?: string;  // 'bank' for PIX/Débito
         account_name?: string;    // Specific account if provided
@@ -85,6 +86,7 @@ export function useCommandCenterLogic() {
     const router = useRouter();
     const { isListening, transcript, startListening, stopListening, resetTranscript } = useSpeechRecognition();
     const tutorialStartedRef = useRef(false);
+    const isSubmittingRef = useRef(false);
     const { tutorialAction } = useDashboard();
 
     // Listen for tutorial triggers from Context
@@ -132,49 +134,60 @@ export function useCommandCenterLogic() {
         let isMounted = true;
 
         const init = async () => {
-            const count = await getDailyUsage();
-            if (!isMounted) return;
-            setUsageCount(count);
+            try {
+                const count = await getDailyUsage();
+                if (isMounted) setUsageCount(count);
+            } catch (e) {
+                console.error('Error loading usage:', e);
+            }
 
-            const level = await getUserLevel();
-            if (!isMounted) return;
-            setUserLevel(level);
+            try {
+                const level = await getUserLevel();
+                if (isMounted) {
+                    setUserLevel(level);
+                    setIsLevelLoaded(true);
 
-            // Only start tutorial if level is 0 AND we haven't started it yet AND there are no messages
-            if (level === 0) {
-                // Check if terms are accepted before starting tutorial
-                const termsAccepted = localStorage.getItem('terms_accepted_v1') === 'true';
+                    // Only start tutorial if level is 0 AND we haven't started it yet AND there are no messages
+                    if (level === 0) {
+                        // Check if terms are accepted before starting tutorial
+                        const termsAccepted = localStorage.getItem('terms_accepted_v1') === 'true';
 
-                if (!termsAccepted) {
-                    // Wait for terms to be accepted before starting tutorial
-                    console.log('Waiting for terms acceptance before starting tutorial...');
-                    return;
+                        if (!termsAccepted) {
+                            // Wait for terms to be accepted before starting tutorial
+                            console.log('Waiting for terms acceptance before starting tutorial...');
+                            return;
+                        }
+
+                        if (tutorialStartedRef.current) return;
+                        tutorialStartedRef.current = true;
+                        setTutorialStep('GREETING');
+
+                        // Use functional update to avoid race conditions
+                        setMessages(prev => {
+                            if (prev.length > 0) return prev; // Don't overwrite if already has messages
+                            return [{
+                                id: 'tutorial-greeting', // Fixed ID to prevent duplicates
+                                role: 'assistant',
+                                content: 'Oi 😊\nSou seu agente financeiro.\nVamos começar só com o básico: ver quanto entra e quanto sai.\nDepois eu te mostro outras coisas.',
+                                isTyping: true,
+                                buttons: [{ label: 'Continuar', value: 'L1_CONTINUE_GREETING', variant: 'primary' }]
+                            }];
+                        });
+                    } else {
+                        setMessages(prev => {
+                            if (prev.length > 0) return prev;
+                            return [{
+                                id: 'welcome-msg',
+                                role: 'assistant',
+                                content: 'Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?'
+                            }];
+                        });
+                    }
                 }
-
-                if (tutorialStartedRef.current) return;
-                tutorialStartedRef.current = true;
-                setTutorialStep('GREETING');
-
-                // Use functional update to avoid race conditions
-                setMessages(prev => {
-                    if (prev.length > 0) return prev; // Don't overwrite if already has messages
-                    return [{
-                        id: 'tutorial-greeting', // Fixed ID to prevent duplicates
-                        role: 'assistant',
-                        content: 'Oi 😊\nSou seu agente financeiro.\nVamos começar só com o básico: ver quanto entra e quanto sai.\nDepois eu te mostro outras coisas.',
-                        isTyping: true,
-                        buttons: [{ label: 'Continuar', value: 'L1_CONTINUE_GREETING', variant: 'primary' }]
-                    }];
-                });
-            } else {
-                setMessages(prev => {
-                    if (prev.length > 0) return prev;
-                    return [{
-                        id: 'welcome-msg',
-                        role: 'assistant',
-                        content: 'Olá! Sou seu Assistente Financeiro. Como posso ajudar hoje?'
-                    }];
-                });
+            } catch (e) {
+                console.error('Error loading level:', e);
+                // Even on error, allow interaction (assume level 1 or keep 0)
+                if (isMounted) setIsLevelLoaded(true);
             }
         };
 
@@ -1043,6 +1056,13 @@ export function useCommandCenterLogic() {
     }, [tutorialStep, addMessage]);
 
     const processUserInput = useCallback(async (userInput: string) => {
+        // Prevent processing before user level is loaded to avoid false blocks
+        if (!isLevelLoaded) {
+            console.log('Waiting for user level to load...');
+            addMessage('assistant', '⏳ Ainda estou carregando seu perfil. Tente novamente em alguns segundos.', 'text');
+            return;
+        }
+
         const lowerInput = userInput.toLowerCase().trim();
 
         // Check for tutorial commands
@@ -1364,6 +1384,75 @@ export function useCommandCenterLogic() {
         }
 
         // ==========================================
+        // LOAN PAYMENT PLAN: User clicked "Já sei" or "Ainda não"
+        // ==========================================
+        if (userInput === 'LOAN_PLAN_YES' && pendingSlots && (pendingSlots as any).intent === 'LOAN_PAYMENT_PLAN') {
+            const loanType = (pendingSlots as any).loanType;
+            const description = (pendingSlots as any).description;
+
+            const promptMessage = loanType === 'taken'
+                ? `Como você vai pagar? Ex: "10x de 500 todo dia 5" ou "parcela única dia 10"`
+                : `Como ${description} vai te pagar? Ex: "10x de 100 todo dia 15"`;
+
+            addMessage('assistant', promptMessage, 'text');
+            return;
+        }
+
+        if (userInput === 'LOAN_PLAN_NO' && pendingSlots && (pendingSlots as any).intent === 'LOAN_PAYMENT_PLAN') {
+            addMessage('assistant', '👍 Ok! Quando souber como vai pagar, me avisa.', 'text');
+            setPendingSlots(null);
+            return;
+        }
+
+        // ==========================================
+        // LOAN PAYMENT PLAN: User providing payment details after clicking "Já sei"
+        // ==========================================
+        if (pendingSlots && (pendingSlots as any).intent === 'LOAN_PAYMENT_PLAN' && !['LOAN_PLAN_YES', 'LOAN_PLAN_NO'].includes(userInput)) {
+            // User is providing payment plan details (e.g., "10x de 500 todo dia 5")
+            const loanData = pendingSlots as any;
+
+            // Build context with all accumulated data
+            let contextParts = [`empréstimo de ${loanData.amount} com ${loanData.description}`, `tipo: ${loanData.loanType}`];
+            if (loanData.loanId) contextParts.push(`loanId: ${loanData.loanId}`);
+            if (loanData.installments) contextParts.push(`parcelas: ${loanData.installments}`);
+            if (loanData.installment_value) contextParts.push(`valor_parcela: ${loanData.installment_value}`);
+            if (loanData.due_day) contextParts.push(`dia_vencimento: ${loanData.due_day}`);
+
+            // Enrich the message with loan context for AI
+            const enrichedMessage = `${userInput}. (CONTEXTO EMPRÉSTIMO: ${contextParts.join(', ')})`;
+
+            const usage = await checkAndIncrementUsage();
+            if (!usage.allowed) {
+                addMessage('assistant', '🛑 Limite diário atingido.', 'error', { skipRefund: true });
+                return;
+            }
+
+            const response = await processCommand(enrichedMessage, [], inputType, userLevel);
+
+            if (response.message.includes('✅')) {
+                setPendingSlots(null);
+                addMessage('assistant', response.message, 'success');
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                }
+            } else if (response.intent === 'CONFIRMATION_REQUIRED' && response.data) {
+                // AI is asking for more info - update pendingSlots with partial data
+                const updatedSlots = {
+                    ...loanData,
+                    installments: response.data.installments || loanData.installments,
+                    installment_value: response.data.installment_value || loanData.installment_value,
+                    due_day: response.data.due_day || loanData.due_day,
+                };
+                setPendingSlots(updatedSlots);
+                console.log('[LOAN_PLAN] Updated pending slots with partial data:', updatedSlots);
+                addMessage('assistant', response.message, 'text');
+            } else {
+                addMessage('assistant', response.message, response.message.includes('❌') ? 'error' : 'text');
+            }
+            return;
+        }
+
+        // ==========================================
         // SLOT-FILLING: User providing bank name after we asked
         // ==========================================
         if (!isJustNumber && pendingSlots && pendingSlots.payment_method === 'bank' && pendingSlots.amount && !pendingSlots.account_name) {
@@ -1388,7 +1477,7 @@ export function useCommandCenterLogic() {
                 const result = await createMovement({
                     description: pendingSlots.description || '',
                     amount: pendingSlots.amount,
-                    type: pendingSlots.type || 'expense',
+                    type: (pendingSlots.type === 'income' || pendingSlots.type === 'expense') ? pendingSlots.type : 'expense',
                     date: pendingSlots.date || new Date().toISOString().split('T')[0],
                     dueDate: pendingSlots.dueDate,
                     isPaid: pendingSlots.dueDate ? false : true,
@@ -1442,6 +1531,36 @@ export function useCommandCenterLogic() {
                     amount: amount
                 };
 
+                // ====================================
+                // LOAN HANDLING: If type is 'taken' or 'given', this is a loan
+                // Pass to AI for proper CREATE_LOAN processing
+                // ====================================
+                if (completedSlots.type === 'taken' || completedSlots.type === 'given') {
+                    // Build message with all context for AI to process as CREATE_LOAN
+                    const loanTypeLabel = completedSlots.type === 'taken' ? 'peguei emprestado' : 'emprestei';
+                    const contextMessage = `Registrar empréstimo: ${loanTypeLabel} ${amount} com ${completedSlots.description}`;
+
+                    // Clear pending slots and let AI handle it
+                    setPendingSlots(null);
+
+                    // Process via AI (which will route to CREATE_LOAN handler)
+                    const usage = await checkAndIncrementUsage();
+                    if (!usage.allowed) {
+                        addMessage('assistant', '🛑 Limite diário atingido.', 'error', { skipRefund: true });
+                        return;
+                    }
+
+                    const response = await processCommand(contextMessage, [], inputType, userLevel);
+                    const msgType = response.message.includes('❌') ? 'error' : (response.message.includes('✅') ? 'success' : 'text');
+                    addMessage('assistant', response.message, msgType);
+
+                    if (response.message.includes('✅') && typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                    }
+                    return;
+                }
+
+
                 // Check if this is a PIX/Débito payment with default account = Carteira
                 if (completedSlots.payment_method === 'bank' && !completedSlots.account_name) {
                     const { getDefaultAccount } = await import('../actions/assets');
@@ -1488,7 +1607,7 @@ export function useCommandCenterLogic() {
                     const result = await createMovement({
                         description: completedSlots.description || '',
                         amount: completedSlots.amount,
-                        type: completedSlots.type || 'expense',
+                        type: (completedSlots.type === 'income' || completedSlots.type === 'expense') ? completedSlots.type : 'expense',
                         date: completedSlots.date || new Date().toISOString().split('T')[0],
                         dueDate: completedSlots.dueDate,
                         isPaid: completedSlots.dueDate ? false : true,
@@ -1658,6 +1777,48 @@ export function useCommandCenterLogic() {
             }
 
             // ==========================================
+            // HANDLE LOAN_ASK_PAYMENT_PLAN INTENT
+            // ==========================================
+            if (response.intent === 'LOAN_ASK_PAYMENT_PLAN' && response.data) {
+                const { loanId, loanType, description, amount } = response.data;
+
+                // Save loan data for potential payment plan
+                setPendingSlots({
+                    intent: 'LOAN_PAYMENT_PLAN',
+                    loanId,
+                    loanType,
+                    description,
+                    amount
+                } as any);
+
+                // Show success message first
+                addMessage('assistant', response.message, 'success');
+
+                // Then ask about payment plan with buttons
+                const paymentQuestion = loanType === 'taken'
+                    ? `Você já sabe como vai pagar esse empréstimo?`
+                    : `Você já sabe como ${description} vai te pagar?`;
+
+                setTimeout(() => {
+                    setMessages(prev => [...prev, {
+                        id: `loan-plan-ask-${Date.now()}`,
+                        role: 'assistant',
+                        content: paymentQuestion,
+                        typingComplete: true,
+                        buttons: [
+                            { label: 'Já sei', value: 'LOAN_PLAN_YES', variant: 'primary' },
+                            { label: 'Ainda não', value: 'LOAN_PLAN_NO', variant: 'secondary' }
+                        ]
+                    }]);
+                }, 1500);
+
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                }
+                return;
+            }
+
+            // ==========================================
             // CAPTURE PARTIAL SLOTS from AI response
             // ==========================================
             if (response.intent === 'CONFIRMATION_REQUIRED' && response.data) {
@@ -1711,7 +1872,7 @@ export function useCommandCenterLogic() {
             console.error(error);
             addMessage('assistant', "Erro ao processar comando.", 'error');
         }
-    }, [tutorialStep, inputType, addMessage, startTutorial, skipTutorial, processTutorialInput, pendingSlots, pendingTransfer, messages]);
+    }, [tutorialStep, inputType, addMessage, startTutorial, skipTutorial, processTutorialInput, pendingSlots, pendingTransfer, messages, isLevelLoaded]);
 
     return {
         input,
@@ -1731,25 +1892,48 @@ export function useCommandCenterLogic() {
         markTypingComplete,
         markTutorialTypingComplete,
         quickActions,
-        handleQuickAction: (action: string) => {
+        handleQuickAction: async (action: string) => {
+            if (isSubmittingRef.current) return;
+            isSubmittingRef.current = true;
             setQuickActions([]);
             addMessage('user', action);
             setIsProcessing(true);
-            processUserInput(action).then(() => setIsProcessing(false));
+            try {
+                await processUserInput(action);
+            } finally {
+                setIsProcessing(false);
+                isSubmittingRef.current = false;
+            }
         },
-        handleSubmit: (e: any) => {
+        handleSubmit: async (e: any) => {
             if (e && e.preventDefault) e.preventDefault();
-            if (!input.trim()) return;
+            if (!input.trim() || isSubmittingRef.current) return;
+
+            isSubmittingRef.current = true;
             setQuickActions([]);
             addMessage('user', input);
+            const currentInput = input;
             setInput("");
             setIsProcessing(true);
-            processUserInput(input).then(() => setIsProcessing(false));
+
+            try {
+                await processUserInput(currentInput);
+            } finally {
+                setIsProcessing(false);
+                isSubmittingRef.current = false;
+            }
         },
-        handleTutorialButton: (value: string) => {
+        handleTutorialButton: async (value: string) => {
+            if (isSubmittingRef.current) return;
+            isSubmittingRef.current = true;
             // Process button click as if user typed the value
             setIsProcessing(true);
-            processUserInput(value).then(() => setIsProcessing(false));
+            try {
+                await processUserInput(value);
+            } finally {
+                setIsProcessing(false);
+                isSubmittingRef.current = false;
+            }
         }
     };
 }

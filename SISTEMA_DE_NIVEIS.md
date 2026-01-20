@@ -170,7 +170,7 @@ A escolha depende do que for mais seguro programar.
 | Cartões de crédito | ✅ Sim (`credit_cards` table) | 3 | ✅ Funcional |
 | Parcelamentos | ✅ Sim (installments em movements) | 3 | ✅ Funcional |
 | Faturas | ✅ Sim (lógica em reports.ts) | 3 | ✅ Funcional |
-| Empréstimos | ✅ Sim (`loans` table) | 3 | ⚠️ Parcial |
+| Empréstimos | ✅ Sim (`loans` table) | 3 | ✅ Funcional |
 | Metas | ⚠️ Parcial (existe `reserves`) | 4 | ⚠️ Parcial |
 | Previsão de meses | ❌ Não existe | 4 | ❌ Pendente |
 | Simulações | ⚠️ Parcial (intent SIMULATE_SCENARIO) | 4 | ⚠️ Básico |

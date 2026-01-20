@@ -163,9 +163,9 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
 6. **CONFIRMATION_REQUIRED**
    - Use APENAS se faltar \`amount\` ou \`description\`.
 
-7. **RECONCILE_PAYMENT** (Confirmar pagamento de conta existente) ⚠️ PRIORIDADE ALTA
-   - **QUANDO USAR**: Quando o usuário diz que PAGOU algo que provavelmente já existe como conta pendente.
-   - **Gatilhos**: "Paguei o X", "Paguei a X", "Quitei o X", "Já paguei o X", "Liquidei o X", "Paguei a conta de X".
+7. **RECONCILE_PAYMENT** (Confirmar pagamento de conta existente OU empréstimo) ⚠️ PRIORIDADE ALTA
+   - **QUANDO USAR**: Quando o usuário diz que PAGOU algo ou RECEBEU pagamento de empréstimo.
+   - **Gatilhos**: "Paguei o X", "Paguei a X", "Quitei o X", "Já paguei o X", "Liquidei o X", "Paguei a conta de X", "Devolvi pro X", "Paguei o X 500", "X me pagou", "X me devolveu", "Recebi de X", "O X me pagou", "A X me pagou", "Fulano me devolveu o dinheiro".
    - **Exemplos que DEVEM usar este intent**:
      - "Paguei o IPTU" → RECONCILE_PAYMENT, search_term: "IPTU"
      - "Paguei a conta de luz" → RECONCILE_PAYMENT, search_term: "luz"
@@ -173,15 +173,20 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Paguei o aluguel" → RECONCILE_PAYMENT, search_term: "aluguel"
      - "Paguei a conta de luz de 180" → RECONCILE_PAYMENT, search_term: "luz", amount: 180
      - "Quitei o colégio por 500" → RECONCILE_PAYMENT, search_term: "colégio", amount: 500
+     - "Paguei o João, 500" → RECONCILE_PAYMENT, search_term: "João", amount: 500 (pode ser empréstimo!)
+     - "Devolvi 200 pro Pedro" → RECONCILE_PAYMENT, search_term: "Pedro", amount: 200 (pagamento de empréstimo)
+     - "A Monica me pagou 200" → RECONCILE_PAYMENT, search_term: "Monica", amount: 200 (recebimento de empréstimo)
+     - "Recebi 500 do João" → RECONCILE_PAYMENT, search_term: "João", amount: 500 (recebimento de empréstimo)
+     - "O Pedro me devolveu os 200" → RECONCILE_PAYMENT, search_term: "Pedro", amount: 200
    - **Exemplos que NÃO usam este intent** (gasto novo sem conta pendente):
      - "Paguei 50 no mercado" → REGISTER_MOVEMENT (gasto avulso!)
      - "Gastei 30 no uber" → REGISTER_MOVEMENT
    - **Regra de Ouro**: "Paguei" + nome de algo (sem valor no início) = RECONCILE_PAYMENT
-   - **IMPORTANTE**: NÃO peça valor! O sistema vai buscar a conta pendente e usar o valor existente. Se o usuário não mencionar valor, use o valor da conta pendente.
+   - **IMPORTANTE**: NÃO peça valor! O sistema busca primeiro em contas pendentes, depois em empréstimos. Se o usuário não mencionar valor, usa o valor existente.
    - **Slots**:
-     - \`search_term\`: O que foi pago (ex: "luz", "IPTU", "aluguel", "conserto do carro").
+     - \`search_term\`: O que foi pago (ex: "luz", "IPTU", "aluguel", "João" para empréstimo).
      - \`amount\`: Valor pago (OPCIONAL - use apenas se o usuário mencionar).
-   - **Ação**: Busca conta pendente, atualiza valor se fornecido, marca como pago.
+   - **Ação**: Busca conta pendente, se não achar busca empréstimo ativo, atualiza valor se fornecido, marca como pago/abate do saldo devedor.
 
 7b. **UPDATE_PENDING_AMOUNT** (Informar valor de conta pendente SEM pagar)
    - **QUANDO USAR**: Quando o usuário quer informar o valor de uma conta que chegou, mas ainda não pagou.
@@ -382,6 +387,99 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Comprei em 10x no carnê" → CREATE_INSTALLMENT (pede data e entrada)
      - "Parcelei nas Casas Bahia" → CREATE_INSTALLMENT (crediário de loja)
 
+17. **CREATE_LOAN** (Registrar empréstimo) ⚠️ PRIORIDADE ALTA
+   - **QUANDO USAR**: Quando o usuário menciona "empréstimo", "emprestei", "peguei emprestado", "devo", "dívida", "me deve".
+   - **DISTINÇÃO CRÍTICA**:
+     - "Peguei emprestado" / "Devo" / "Dívida" → type: 'taken' (eu peguei = entra dinheiro, cria passivo)
+     - "Emprestei" / "Me deve" / "Passei emprestado" → type: 'given' (eu emprestei = sai dinheiro, cria ativo)
+   - **SLOTS**:
+     1. \`description\` (OBRIGATÓRIO - Com quem? Ex: "João", "Banco X", "meu irmão")
+     2. \`amount\` (OBRIGATÓRIO - Valor total)
+     3. \`type\` (OBRIGATÓRIO - 'taken' ou 'given'. INFIRA do contexto. Se ambíguo, PERGUNTE: "Você pegou emprestado ou emprestou pra alguém?")
+     4. \`due_date\` (OPCIONAL - Data de vencimento do empréstimo em si. NÃO exija.)
+     5. \`interest_rate\` (OPCIONAL - Taxa de juros mensal)
+     6. \`installments\` (OPCIONAL - Se usuário já disser como vai pagar. Ex: "em 5x")
+     7. \`installment_value\` (OPCIONAL - Valor da parcela)
+     8. \`payment_due_day\` (OPCIONAL - Dia de vencimento das parcelas. Ex: "todo dia 10")
+   - **Gatilhos para 'taken'**: "peguei emprestado", "me emprestou", "devo X pra", "dívida com", "to devendo", "peguei X com"
+   - **Gatilhos para 'given'**: "emprestei", "me deve", "passei emprestado pra", "fulano me deve", "emprestei X pro"
+   - **Exemplos**:
+     - "Peguei 500 emprestado com o João" → CREATE_LOAN, amount: 500, description: "João", type: 'taken'
+     - "Emprestei 200 pro Pedro" → CREATE_LOAN, amount: 200, description: "Pedro", type: 'given'
+     - "Devo 1000 pro banco, vence dia 10" → CREATE_LOAN, amount: 1000, description: "banco", type: 'taken', due_date: "YYYY-MM-10"
+     - "O João me deve 300" → CREATE_LOAN, amount: 300, description: "João", type: 'given'
+     - "Peguei 1000 no Banco X pra pagar em 10x de 100 todo dia 5" → CREATE_LOAN, amount: 1000, description: "Banco X", type: 'taken', installments: 10, installment_value: 100, payment_due_day: 5
+   - **Fluxo com Slot-Filling**:
+     - User: "Peguei emprestado com o João"
+       AI: { intent: "CONFIRMATION_REQUIRED", message: "Qual o valor que você pegou emprestado com o João?", data: { originalIntent: "CREATE_LOAN", description: "João", type: "taken" } }
+     - User: "500"
+       AI: { intent: "CREATE_LOAN", data: { description: "João", amount: 500, type: "taken" }, message: "✅ Empréstimo registrado! R$500 pegos com João." }
+   - **IMPORTANTE**: NÃO exija data de vencimento. Empréstimos sem data aparecerão como pendências em qualquer projeção futura.
+
+18. **LOAN_PAYMENT_PLAN** (Plano de pagamento de empréstimo)
+   - **QUANDO USAR**: Quando o usuário informa como vai pagar ou receber um empréstimo.
+   - **CONTEXTO**: Só usar se no histórico recente foi perguntado "como vai pagar/receber o empréstimo".
+   - **SLOTS OBRIGATÓRIOS**:
+     1. \`installments\` (Número de parcelas. Ex: 10)
+     2. \`installment_value\` (Valor de cada parcela. Ex: 500)
+     3. \`due_day\` (Dia do vencimento, 1-31. Ex: 5)
+   - **Gatilhos**:
+     - "10x de 500 todo dia 5"
+     - "parcela única dia 10"
+     - "5x de 200 no dia 15"
+     - "em 12 parcelas de 100 todo dia 1"
+   - **Exemplos**:
+     - "10x de 500 todo dia 5" → LOAN_PAYMENT_PLAN, installments: 10, installment_value: 500, due_day: 5
+     - "parcela única dia 10" → LOAN_PAYMENT_PLAN, installments: 1, installment_value: null, due_day: 10
+     - "vou pagar tudo dia 20" → LOAN_PAYMENT_PLAN, installments: 1, installment_value: null, due_day: 20
+
+19. **CREATE_GOAL** (Criar meta/reserva)
+   - **QUANDO USAR**: Quando o usuário quer criar uma meta de economia.
+   - **Gatilhos**: "Criar meta", "Nova meta", "Quero juntar dinheiro para X", "Vou criar um cofrinho para X"
+   - **SLOTS**:
+     1. \`description\` (OBRIGATÓRIO - Nome da meta. Ex: "Viagem", "Carro Novo", "Presente da Clarinha")
+     2. \`amount\` (OPCIONAL - Valor alvo. Ex: 5000)
+     3. \`deadline\` (OPCIONAL - Data limite. Ex: "dezembro de 2026")
+   - **Exemplos**:
+     - "Criar meta Viagem pro Japão de 15 mil" → CREATE_GOAL, description: "Viagem pro Japão", amount: 15000
+     - "Quero juntar dinheiro pra um carro" → CREATE_GOAL, description: "Carro"
+     - "Nova meta: Reserva de Emergência, 10 mil" → CREATE_GOAL, description: "Reserva de Emergência", amount: 10000
+
+20. **ADD_TO_GOAL** (Aportar/Guardar na meta)
+   - **QUANDO USAR**: Quando o usuário quer guardar dinheiro em uma meta existente.
+   - **Gatilhos**: "Guardar X na meta Y", "Colocar X no Y", "Guardei X pro Y", "Vou reservar X pra Y"
+   - **SLOTS**:
+     1. \`amount\` (OBRIGATÓRIO - Valor a guardar)
+     2. \`search_term\` (OBRIGATÓRIO - Nome ou parte do nome da meta)
+     3. \`account_name\` (OPCIONAL - Conta de origem. Default: conta padrão)
+   - **LÓGICA ESPECIAL**: Se a meta não for encontrada, retorne CONFIRMATION_REQUIRED perguntando se o usuário quer criar uma nova meta com esse nome.
+   - **Exemplos**:
+     - "Guardar 200 na Viagem" → ADD_TO_GOAL, amount: 200, search_term: "Viagem"
+     - "Guardei 100 pro presente da Clarinha" → ADD_TO_GOAL, amount: 100, search_term: "presente da Clarinha"
+     - "Vou colocar 500 no cofrinho do carro" → ADD_TO_GOAL, amount: 500, search_term: "carro"
+
+21. **WITHDRAW_FROM_GOAL** (Resgatar/Usar da meta)
+   - **QUANDO USAR**: Quando o usuário quer tirar dinheiro de uma meta para usar.
+   - **Gatilhos**: "Tirar X da meta Y", "Resgatar X do Y", "Vou usar X da reserva Y", "Pegar X do cofrinho"
+   - **SLOTS**:
+     1. \`amount\` (OBRIGATÓRIO - Valor a resgatar)
+     2. \`search_term\` (OBRIGATÓRIO - Nome da meta)
+     3. \`account_name\` (OPCIONAL - Conta de destino. Default: conta padrão)
+   - **Exemplos**:
+     - "Tirar 1000 da Viagem" → WITHDRAW_FROM_GOAL, amount: 1000, search_term: "Viagem"
+     - "Vou usar 500 da reserva de emergência" → WITHDRAW_FROM_GOAL, amount: 500, search_term: "reserva de emergência"
+     - "Resgatar 200 do cofrinho do carro" → WITHDRAW_FROM_GOAL, amount: 200, search_term: "carro"
+
+22. **CHECK_GOAL** (Consultar meta)
+   - **QUANDO USAR**: Quando o usuário quer saber o status de uma meta.
+   - **Gatilhos**: "Quanto falta pra X?", "Como está a meta X?", "Status da viagem", "Quanto já guardei pro carro?"
+   - **SLOTS**:
+     1. \`search_term\` (OPCIONAL - Nome da meta. Se não informado, lista todas)
+   - **Exemplos**:
+     - "Quanto falta pra Viagem?" → CHECK_GOAL, search_term: "Viagem"
+     - "Como estão minhas metas?" → CHECK_GOAL
+     - "Quanto já guardei pro carro?" → CHECK_GOAL, search_term: "carro"
+
 ### REGRAS CRÍTICAS DE SLOT-FILLING (LEIA COM ATENÇÃO):
 
 Ao receber o CONTEXTO DA CONVERSA, você DEVE usar as informações já fornecidas.
@@ -529,13 +627,13 @@ function detectBlockedFeature(input: string, userLevel: number): string | null {
     for (const keyword of LEVEL_KEYWORDS.creditCard) {
       if (lowerInput.includes(keyword)) return 'creditCard';
     }
+  }
+
+  // Level 1-3: Block Level 4+ features (loans, goals)
+  if (userLevel <= 3) {
     for (const keyword of LEVEL_KEYWORDS.loan) {
       if (lowerInput.includes(keyword)) return 'loan';
     }
-  }
-
-  // Level 1-3: Block Level 4+ features
-  if (userLevel <= 3) {
     for (const keyword of LEVEL_KEYWORDS.goals) {
       if (lowerInput.includes(keyword)) return 'goals';
     }
@@ -822,23 +920,35 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
 
 
+
+      // Validate type - if AI sent loan type instead of movement type, convert it
+      let movementType: 'income' | 'expense' | 'transfer' | 'adjustment' = d.type || 'expense';
+      if (d.type === 'taken') {
+        movementType = 'income'; // Took loan = money comes in
+      } else if (d.type === 'given') {
+        movementType = 'expense'; // Gave loan = money goes out
+      } else if (!['income', 'expense', 'transfer', 'adjustment'].includes(d.type)) {
+        movementType = 'expense'; // Fallback
+      }
+
       // Call finance-core
       const result = await createMovement({
         description: d.description,
         amount: d.amount,
-        type: d.type || 'expense',
+        type: movementType,
         date: d.date || new Date().toISOString().split('T')[0],
         dueDate: d.due_date,
         isPaid: d.is_paid,
         accountId: isPending ? undefined : accountId, // No account for pending payments
         cardId: cardId,
         categoryId: categoryId,
-        isLoan: d.is_loan,
-        loanType: d.loan_type,
+        isLoan: d.is_loan || d.type === 'taken' || d.type === 'given',
+        loanType: d.loan_type || (d.type === 'taken' || d.type === 'given' ? d.type : undefined),
         loanDescription: d.description,
         loanTotal: d.amount,
         isReserve: d.is_reserve,
       });
+
 
       if (result.success) {
         // Include account name in the message if available (natural language)
@@ -1047,7 +1157,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
     if (d.search_term) {
       const { findPendingMovement, updatePendingMovement } = await import('./finance-core');
       const findResult = await findPendingMovement(d.search_term);
-      console.log('[RECONCILE_PAYMENT] findResult:', findResult.success, findResult.movement?.id);
       if (findResult.success && findResult.movement) {
         const updateResult = await updatePendingMovement({
           movementId: findResult.movement.id,
@@ -1064,7 +1173,50 @@ export async function processCommand(input: string, history: string[] = [], inpu
           finalMessage = `❌ ${updateResult.error}`;
         }
       } else {
-        finalMessage = `❌ ${findResult.error}`;
+        // Not found as pending movement - try to find as loan
+        const { getLoans } = await import('./loans');
+        const { registerLoanPayment } = await import('./loans');
+        const loans = await getLoans();
+
+        // Search for loan by description (case-insensitive partial match)
+        const searchLower = d.search_term.toLowerCase();
+        const matchingLoan = loans.find(loan =>
+          loan.description.toLowerCase().includes(searchLower) && loan.remaining_amount > 0
+        );
+
+        if (matchingLoan) {
+          // Found a loan! Register payment
+          const paymentAmount = d.amount || matchingLoan.remaining_amount; // If no amount specified, pay full remaining
+          const paymentResult = await registerLoanPayment({
+            loanId: matchingLoan.id,
+            amount: paymentAmount
+          });
+
+          if (paymentResult.success) {
+            const formattedPayment = paymentAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const formattedRemaining = paymentResult.newRemainingAmount?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            if (matchingLoan.type === 'taken') {
+              // I owed someone - I'm paying back
+              if (paymentResult.newRemainingAmount === 0) {
+                finalMessage = `✅ Empréstimo quitado! Você pagou ${formattedPayment} para **${matchingLoan.description}**. Dívida encerrada! 🎉`;
+              } else {
+                finalMessage = `✅ Pagamento registrado! ${formattedPayment} pago para **${matchingLoan.description}**.\n📊 Saldo devedor: ${formattedRemaining}`;
+              }
+            } else {
+              // Someone owed me - they're paying back
+              if (paymentResult.newRemainingAmount === 0) {
+                finalMessage = `✅ Empréstimo recebido! **${matchingLoan.description}** te devolveu ${formattedPayment}. Crédito quitado! 🎉`;
+              } else {
+                finalMessage = `✅ Pagamento recebido! ${formattedPayment} recebido de **${matchingLoan.description}**.\n📊 Ainda falta: ${formattedRemaining}`;
+              }
+            }
+          } else {
+            finalMessage = `❌ Erro ao registrar pagamento: ${paymentResult.error}`;
+          }
+        } else {
+          finalMessage = `❌ ${findResult.error} (Também não encontrei empréstimo com "${d.search_term}")`;
+        }
       }
     } else {
       finalMessage = `❌ Não entendi qual conta você pagou. Tente: "Paguei a conta de luz".`;
@@ -1308,6 +1460,182 @@ export async function processCommand(input: string, history: string[] = [], inpu
     }
   }
 
+  // Handle CREATE_LOAN - register loan (taken or given)
+  if (parsedResponse.intent === 'CREATE_LOAN') {
+    const d = parsedResponse.data;
+
+    // Validate required fields
+    if (!d.description || !d.amount || !d.type) {
+      finalMessage = `❌ Faltam dados. Me diga o valor, com quem foi e se você pegou ou emprestou.`;
+    } else {
+      const { createLoan } = await import('./loans');
+      const { createMovement } = await import('./finance-core');
+      const { getDefaultAccount, getAccountByName } = await import('./assets');
+
+      // 1. Create the loan record
+      console.log(`[CREATE_LOAN] Creating loan: ${d.description}, amount: ${d.amount}`);
+      const loanResult = await createLoan({
+        description: d.description,
+        total_amount: d.amount,
+        type: d.type, // 'taken' or 'given'
+        due_date: d.due_date || undefined,
+        interest_rate: d.interest_rate || undefined
+      });
+
+      if (!loanResult.success) {
+        finalMessage = `❌ Erro ao registrar empréstimo: ${loanResult.error}`;
+      } else {
+        // 2. Create the corresponding financial movement
+        let accountId = undefined;
+        if (d.account_name) {
+          const account = await getAccountByName(d.account_name);
+          if (account) accountId = account.id;
+        }
+        if (!accountId) {
+          const defaultAcc = await getDefaultAccount();
+          if (defaultAcc) accountId = defaultAcc.id;
+        }
+
+        // For 'taken': income (money comes in)
+        // For 'given': expense (money goes out)
+        const movementType = d.type === 'taken' ? 'income' : 'expense';
+        const movementDescription = d.type === 'taken'
+          ? `Empréstimo recebido de ${d.description}`
+          : `Empréstimo para ${d.description}`;
+
+        // Create movement WITHOUT isLoan/loanId to avoid double-updating remaining_amount
+        // The loan was already created with correct remaining_amount above
+        await createMovement({
+          description: movementDescription,
+          amount: d.amount,
+          type: movementType,
+          date: new Date().toISOString().split('T')[0],
+          categoryId: undefined,
+          accountId: accountId,
+          isPaid: true
+          // isLoan and loanId intentionally omitted - they cause remaining_amount to be updated again
+        });
+
+        // 3. Format success message
+        const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        if (d.type === 'taken') {
+          finalMessage = `✅ Empréstimo registrado!\n\n💰 ${formattedAmount} pegos emprestado de **${d.description}**\n📥 Entrada de ${formattedAmount} anotada na sua conta.`;
+          if (d.due_date) {
+            const [y, m, day] = d.due_date.split('-');
+            finalMessage += `\n📅 Vencimento: ${day}/${m}/${y}`;
+          }
+        } else {
+          finalMessage = `✅ Empréstimo registrado!\n\n💸 ${formattedAmount} emprestados para **${d.description}**\n📤 Saída de ${formattedAmount} anotada na sua conta.`;
+          if (d.due_date) {
+            const [y, m, day] = d.due_date.split('-');
+            finalMessage += `\n📅 Retorno previsto: ${day}/${m}/${y}`;
+          }
+        }
+
+        // 4. Check if payment plan data was provided in the same intent
+        if (d.installments && d.payment_due_day) {
+          const { createLoanPaymentPlan } = await import('./loans');
+
+          const planResult = await createLoanPaymentPlan({
+            installments: d.installments,
+            installmentValue: d.installment_value,
+            dueDay: d.payment_due_day,
+            loanType: d.type,
+            description: d.description,
+            loanId: loanResult.data?.id,
+            totalAmount: d.amount
+          });
+
+          if (planResult.success) {
+            const installmentValue = d.installment_value || (planResult.calculatedValue || 0);
+            const formattedValue = installmentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            finalMessage += `\n\n✅ Plano de pagamento criado!\n📅 ${d.installments}x de ${formattedValue} todo dia ${d.payment_due_day}.`;
+
+            // Return success immediately, no need to ask for plan
+            return {
+              intent: 'CREATE_LOAN' as IntentType,
+              data: parsedResponse.data,
+              message: finalMessage,
+              confidence: 1.0
+            };
+          }
+        }
+
+        // 5. Return special intent to ask about payment plan (ONLY if not created above)
+        return {
+          intent: 'LOAN_ASK_PAYMENT_PLAN' as IntentType,
+          data: {
+            loanId: loanResult.data?.id,
+            loanType: d.type,
+            description: d.description,
+            amount: d.amount
+          },
+          message: finalMessage,
+          confidence: 1.0
+        };
+      }
+    }
+  }
+
+  // Handle LOAN_PAYMENT_PLAN - create future movements for loan payments
+  if (parsedResponse.intent === 'LOAN_PAYMENT_PLAN') {
+    const d = parsedResponse.data;
+
+    if (!d.installments || !d.due_day) {
+      finalMessage = `❌ Não entendi o plano de pagamento. Me diga algo como "10x de 500 todo dia 5".`;
+    } else {
+      const { createLoanPaymentPlan } = await import('./loans');
+
+      // Extract loan info from context passed in message (frontend enriches the message)
+      // Format: (CONTEXTO EMPRÉSTIMO: empréstimo de X com Y, tipo: Z, ...)
+      let loanDescription = d.description || 'Empréstimo';
+      let loanType: 'taken' | 'given' = d.loan_type || 'taken';
+      let loanId = d.loan_id;
+
+      // Try to extract from input context if not in data
+      const contextMatch = input.match(/CONTEXTO EMPRÉSTIMO:([^)]+)/i);
+      if (contextMatch) {
+        const contextStr = contextMatch[1];
+        // Extract description: "empréstimo de X com Y" -> Y
+        const descMatch = contextStr.match(/com\s+([^,]+)/i);
+        if (descMatch) loanDescription = descMatch[1].trim();
+
+        // Extract type
+        if (contextStr.includes('tipo: given')) loanType = 'given';
+
+        // Extract loanId
+        const loanIdMatch = contextStr.match(/loanId:\s*([^,\s]+)/i);
+        if (loanIdMatch && loanIdMatch[1] !== 'undefined') loanId = loanIdMatch[1];
+      }
+
+      console.log('[LOAN_PAYMENT_PLAN] Description:', loanDescription, '| Type:', loanType, '| LoanId:', loanId);
+
+      const result = await createLoanPaymentPlan({
+        installments: d.installments,
+        installmentValue: d.installment_value,
+        dueDay: d.due_day,
+        loanType,
+        description: loanDescription,
+        loanId
+      });
+
+      if (result.success) {
+        const installmentValue = d.installment_value || (result.calculatedValue || 0);
+        const formattedValue = installmentValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        if (d.installments === 1) {
+          finalMessage = `✅ Pagamento agendado!\n\n📅 Parcela única de ${formattedValue} todo dia ${d.due_day}.`;
+        } else {
+          finalMessage = `✅ Plano de pagamento criado!\n\n📅 ${d.installments} parcelas de ${formattedValue} todo dia ${d.due_day}.`;
+        }
+      } else {
+        finalMessage = `❌ Erro ao criar plano: ${result.error}`;
+      }
+    }
+  }
+
   // Handle SET_AUTO_DEBIT - create or mark recurrence as auto-debit
   if (parsedResponse.intent === 'SET_AUTO_DEBIT') {
     const d = parsedResponse.data;
@@ -1483,6 +1811,248 @@ export async function processCommand(input: string, history: string[] = [], inpu
         return `• ${ad.description}${amountStr}${accountStr}`;
       }).join('\n');
       finalMessage = `⚡ Suas contas em débito automático:\n\n${list}`;
+    }
+  }
+
+  // Handle CREATE_GOAL - create a new financial goal/reserve
+  if (parsedResponse.intent === 'CREATE_GOAL') {
+    const d = parsedResponse.data;
+
+    if (!d.description) {
+      finalMessage = `🎯 Qual é o nome da sua meta? Por exemplo: "Viagem", "Carro Novo", "Reserva de Emergência".`;
+    } else {
+      const { createReserve, getReserves } = await import('./planning');
+
+      // Check if goal with similar name already exists
+      const existingGoals = await getReserves();
+      const existingGoal = existingGoals.find(g =>
+        g.name.toLowerCase().includes(d.description.toLowerCase()) ||
+        d.description.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (existingGoal) {
+        finalMessage = `⚠️ Já existe uma meta chamada "${existingGoal.name}". Você quer aportar nela? Diga: "Guardar X na ${existingGoal.name}"`;
+      } else {
+        try {
+          // Generate a color based on description (simple hash)
+          const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+          const colorIndex = d.description.charCodeAt(0) % colors.length;
+
+          const result = await createReserve({
+            name: d.description,
+            target_amount: d.amount || undefined,
+            deadline: d.deadline || undefined,
+            color: colors[colorIndex]
+          });
+
+          const targetStr = d.amount
+            ? ` de ${d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+            : '';
+          const deadlineStr = d.deadline ? ` até ${d.deadline}` : '';
+
+          finalMessage = `🎯 Meta criada!\n\n**${d.description}**${targetStr}${deadlineStr}\n\n💡 Para guardar dinheiro, diga: "Guardar X na ${d.description}"`;
+        } catch (error) {
+          finalMessage = `❌ Erro ao criar meta: ${error}`;
+        }
+      }
+    }
+  }
+
+  // Handle ADD_TO_GOAL - deposit money into a goal (transfer from account to goal)
+  if (parsedResponse.intent === 'ADD_TO_GOAL') {
+    const d = parsedResponse.data;
+
+    if (!d.amount || !d.search_term) {
+      finalMessage = `💰 Quanto você quer guardar e em qual meta? Por exemplo: "Guardar 200 na Viagem"`;
+    } else {
+      const { getReserves, addToReserve } = await import('./planning');
+      const goals = await getReserves();
+
+      // Find goal by name (fuzzy match)
+      const goal = goals.find(g =>
+        g.name.toLowerCase().includes(d.search_term.toLowerCase()) ||
+        d.search_term.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!goal) {
+        // Goal not found - ask if user wants to create
+        finalMessage = `📝 Não encontrei a meta "${d.search_term}". Quer criar uma nova meta com esse nome?\n\n💡 Responda: "Sim" ou "Criar meta ${d.search_term}"`;
+        return {
+          intent: 'CONFIRMATION_REQUIRED' as IntentType,
+          data: {
+            originalIntent: 'ADD_TO_GOAL',
+            amount: d.amount,
+            search_term: d.search_term,
+            suggestCreate: true
+          },
+          message: finalMessage,
+          confidence: 0.9
+        };
+      }
+
+      try {
+        // 1. Register the transfer (account -> goal) as expense
+        const { createMovement } = await import('./finance-core');
+        const { getDefaultAccount, getAccountByName: getAccByName } = await import('./assets');
+
+        let accountId = undefined;
+        if (d.account_name) {
+          const account = await getAccByName(d.account_name);
+          accountId = account?.id;
+        } else {
+          const defaultAccount = await getDefaultAccount();
+          accountId = defaultAccount?.id;
+        }
+
+        await createMovement({
+          description: `Guardado na meta ${goal.name}`,
+          amount: d.amount,
+          type: 'expense',
+          date: new Date().toISOString().split('T')[0],
+          accountId: accountId,
+          isPaid: true,
+          isReserve: true,
+          reserveId: goal.id
+        });
+
+        // 2. Update goal balance
+        const result = await addToReserve(goal.id, d.amount);
+
+        const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const newBalance = result.newAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        let progressStr = '';
+        if (goal.target_amount && goal.target_amount > 0) {
+          const percent = Math.round((result.newAmount / goal.target_amount) * 100);
+          const remaining = goal.target_amount - result.newAmount;
+          const remainingStr = remaining > 0
+            ? `Faltam ${remaining.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+            : `Meta atingida! 🎉`;
+          progressStr = `\n📊 Progresso: ${percent}% (${remainingStr})`;
+        }
+
+        finalMessage = `✅ Guardado!\n\n💰 ${formattedAmount} → ${goal.name}\n🎯 Saldo da meta: ${newBalance}${progressStr}`;
+      } catch (error) {
+        finalMessage = `❌ Erro ao guardar: ${error}`;
+      }
+    }
+  }
+
+  // Handle WITHDRAW_FROM_GOAL - withdraw money from a goal (transfer from goal to account)
+  if (parsedResponse.intent === 'WITHDRAW_FROM_GOAL') {
+    const d = parsedResponse.data;
+
+    if (!d.amount || !d.search_term) {
+      finalMessage = `💸 Quanto você quer resgatar e de qual meta? Por exemplo: "Tirar 500 da Viagem"`;
+    } else {
+      const { getReserves, addToReserve } = await import('./planning');
+      const goals = await getReserves();
+
+      // Find goal by name
+      const goal = goals.find(g =>
+        g.name.toLowerCase().includes(d.search_term.toLowerCase()) ||
+        d.search_term.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!goal) {
+        finalMessage = `📝 Não encontrei a meta "${d.search_term}". Verifique o nome e tente novamente.`;
+      } else if (goal.current_amount < d.amount) {
+        const currentStr = goal.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        finalMessage = `⚠️ A meta "${goal.name}" só tem ${currentStr}. Não dá pra resgatar ${d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`;
+      } else {
+        try {
+          // 1. Register the transfer (goal -> account) as income
+          const { createMovement } = await import('./finance-core');
+          const { getDefaultAccount, getAccountByName: getAccByName2 } = await import('./assets');
+
+          let accountId = undefined;
+          if (d.account_name) {
+            const account = await getAccByName2(d.account_name);
+            accountId = account?.id;
+          } else {
+            const defaultAccount = await getDefaultAccount();
+            accountId = defaultAccount?.id;
+          }
+
+          await createMovement({
+            description: `Resgate da meta ${goal.name}`,
+            amount: d.amount,
+            type: 'income',
+            date: new Date().toISOString().split('T')[0],
+            accountId: accountId,
+            isPaid: true,
+            isReserve: true,
+            reserveId: goal.id
+          });
+
+          // 2. Update goal balance (subtract)
+          const result = await addToReserve(goal.id, -d.amount);
+
+          const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const newBalance = result.newAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          finalMessage = `✅ Resgatado!\n\n💸 ${formattedAmount} ← ${goal.name}\n🎯 Saldo restante na meta: ${newBalance}\n\n💡 O dinheiro está disponível na sua conta agora.`;
+        } catch (error) {
+          finalMessage = `❌ Erro ao resgatar: ${error}`;
+        }
+      }
+    }
+  }
+
+  // Handle CHECK_GOAL - show goal status
+  if (parsedResponse.intent === 'CHECK_GOAL') {
+    const d = parsedResponse.data;
+
+    const { getReserves } = await import('./planning');
+    const goals = await getReserves();
+
+    if (goals.length === 0) {
+      finalMessage = `📝 Você ainda não tem nenhuma meta criada.\n\n💡 Para criar, diga: "Criar meta Viagem de 5000"`;
+    } else if (d.search_term) {
+      // Find specific goal
+      const goal = goals.find(g =>
+        g.name.toLowerCase().includes(d.search_term.toLowerCase()) ||
+        d.search_term.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!goal) {
+        finalMessage = `📝 Não encontrei a meta "${d.search_term}". Suas metas são:\n${goals.map(g => `• ${g.name}`).join('\n')}`;
+      } else {
+        const currentStr = goal.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        if (goal.target_amount && goal.target_amount > 0) {
+          const targetStr = goal.target_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const percent = Math.round((goal.current_amount / goal.target_amount) * 100);
+          const remaining = goal.target_amount - goal.current_amount;
+
+          // Visual progress bar
+          const filled = Math.round(percent / 10);
+          const empty = 10 - filled;
+          const progressBar = '█'.repeat(Math.min(filled, 10)) + '░'.repeat(Math.max(empty, 0));
+
+          if (remaining > 0) {
+            const remainingStr = remaining.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            finalMessage = `🎯 **${goal.name}**\n\n[${progressBar}] ${percent}%\n\n💰 Guardado: ${currentStr}\n🎯 Meta: ${targetStr}\n📊 Faltam: ${remainingStr}`;
+          } else {
+            finalMessage = `🎉 **${goal.name}** - META ATINGIDA!\n\n[${progressBar}] ${percent}%\n\n💰 Guardado: ${currentStr}\n🎯 Meta: ${targetStr}\n\n🚀 Você já pode usar esse dinheiro!`;
+          }
+        } else {
+          finalMessage = `🎯 **${goal.name}**\n\n💰 Guardado: ${currentStr}\n\n(Sem valor alvo definido)`;
+        }
+      }
+    } else {
+      // List all goals
+      const goalList = goals.map(g => {
+        const currentStr = g.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        if (g.target_amount && g.target_amount > 0) {
+          const percent = Math.round((g.current_amount / g.target_amount) * 100);
+          return `• **${g.name}**: ${currentStr} (${percent}%)`;
+        } else {
+          return `• **${g.name}**: ${currentStr}`;
+        }
+      }).join('\n');
+
+      finalMessage = `🎯 Suas metas:\n\n${goalList}\n\n💡 Para detalhes, pergunte: "Quanto falta pra [nome]?"`;
     }
   }
 

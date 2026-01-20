@@ -463,7 +463,8 @@ export async function findPendingMovement(searchTerm: string): Promise<{
         .eq('user_id', user.id)
         .eq('is_paid', false)
         .ilike('description', `%${searchTerm}%`)
-        .order('created_at', { ascending: false })
+        .order('due_date', { ascending: true }) // Prioritize oldest due dates (pay 1/12 before 12/12)
+        .order('created_at', { ascending: true })
         .limit(5);
 
     // Also log ALL pending movements to debug
