@@ -481,6 +481,39 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Como estão minhas metas?" → CHECK_GOAL
      - "Quanto já guardei pro carro?" → CHECK_GOAL, search_term: "carro"
 
+23. **TRANSFER_BETWEEN_GOALS** (Transferir entre metas)
+   - **QUANDO USAR**: Quando o usuário quer mover dinheiro de uma meta para outra.
+   - **Gatilhos**: "Transferir X da meta A para meta B", "Mover X do carro pra viagem", "Passar X da reserva pro carro"
+   - **SLOTS**:
+     1. \`amount\` (OBRIGATÓRIO - Valor a transferir)
+     2. \`from_goal\` (OBRIGATÓRIO - Nome da meta de origem)
+     3. \`to_goal\` (OBRIGATÓRIO - Nome da meta de destino)
+   - **Exemplos**:
+     - "Transferir 500 da Viagem pro Carro" → TRANSFER_BETWEEN_GOALS, amount: 500, from_goal: "Viagem", to_goal: "Carro"
+     - "Mover 200 do carro pra reserva" → TRANSFER_BETWEEN_GOALS, amount: 200, from_goal: "carro", to_goal: "reserva"
+
+24. **EDIT_GOAL** (Editar meta)
+   - **QUANDO USAR**: Quando o usuário quer alterar valor, nome, prazo ou cor de uma meta.
+   - **Gatilhos**: "Alterar meta X", "Mudar valor da viagem para 8000", "Renomear meta X para Y"
+   - **SLOTS**:
+     1. \`search_term\` (OBRIGATÓRIO - Nome atual da meta)
+     2. \`new_name\` (OPCIONAL - Novo nome)
+     3. \`new_target_amount\` (OPCIONAL - Novo valor alvo)
+     4. \`new_deadline\` (OPCIONAL - Nova data limite)
+   - **Exemplos**:
+     - "Alterar valor da Viagem pra 10 mil" → EDIT_GOAL, search_term: "Viagem", new_target_amount: 10000
+     - "Renomear meta Carro para Moto" → EDIT_GOAL, search_term: "Carro", new_name: "Moto"
+
+25. **DELETE_GOAL** (Excluir meta)
+   - **QUANDO USAR**: Quando o usuário quer deletar uma meta (apenas se não houver saldo).
+   - **Gatilhos**: "Excluir meta X", "Apagar meta viagem", "Deletar meta carro"
+   - **SLOTS**:
+     1. \`search_term\` (OBRIGATÓRIO - Nome da meta)
+   - **LÓGICA ESPECIAL**: Se a meta tiver saldo > 0, NÃO exclua. Pergunte se quer resgatar o valor primeiro.
+   - **Exemplos**:
+     - "Excluir meta Viagem" → DELETE_GOAL, search_term: "Viagem"
+     - "Apagar meta presente da Clarinha" → DELETE_GOAL, search_term: "presente da Clarinha"
+
 ### REGRAS CRÍTICAS DE SLOT-FILLING (LEIA COM ATENÇÃO):
 
 Ao receber o CONTEXTO DA CONVERSA, você DEVE usar as informações já fornecidas.
@@ -1504,8 +1537,8 @@ export async function processCommand(input: string, history: string[] = [], inpu
           ? `Empréstimo recebido de ${d.description}`
           : `Empréstimo para ${d.description}`;
 
-        // Create movement WITHOUT isLoan/loanId to avoid double-updating remaining_amount
-        // The loan was already created with correct remaining_amount above
+        // Create movement WITH isLoan:true so it's excluded from realIncome
+        // loanId is intentionally omitted to avoid double-updating remaining_amount
         await createMovement({
           description: movementDescription,
           amount: d.amount,
@@ -1513,8 +1546,9 @@ export async function processCommand(input: string, history: string[] = [], inpu
           date: new Date().toISOString().split('T')[0],
           categoryId: undefined,
           accountId: accountId,
-          isPaid: true
-          // isLoan and loanId intentionally omitted - they cause remaining_amount to be updated again
+          isPaid: true,
+          isLoan: true  // IMPORTANT: Mark as loan so it's excluded from real income/expense
+          // loanId intentionally omitted - it causes remaining_amount to be updated again
         });
 
         // 3. Format success message
@@ -2058,6 +2092,138 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }).join('\n');
 
       finalMessage = `🎯 Suas metas:\n\n${goalList}\n\n💡 Para detalhes, pergunte: "Quanto falta pra [nome]?"`;
+    }
+  }
+
+  // Handle TRANSFER_BETWEEN_GOALS - Move money between goals
+  if (parsedResponse.intent === 'TRANSFER_BETWEEN_GOALS') {
+    const d = parsedResponse.data;
+
+    const { getReserves } = await import('./planning');
+    const goals = await getReserves();
+
+    if (goals.length < 2) {
+      finalMessage = `📝 Você precisa de pelo menos 2 metas para fazer uma transferência.`;
+    } else if (!d.amount || !d.from_goal || !d.to_goal) {
+      finalMessage = `❓ Para transferir entre metas, preciso saber: valor, meta de origem e meta de destino.`;
+    } else {
+      // Find source and destination goals
+      const fromGoal = goals.find(g =>
+        g.name.toLowerCase().includes(d.from_goal.toLowerCase()) ||
+        d.from_goal.toLowerCase().includes(g.name.toLowerCase())
+      );
+      const toGoal = goals.find(g =>
+        g.name.toLowerCase().includes(d.to_goal.toLowerCase()) ||
+        d.to_goal.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!fromGoal) {
+        finalMessage = `📝 Não encontrei a meta "${d.from_goal}".`;
+      } else if (!toGoal) {
+        finalMessage = `📝 Não encontrei a meta "${d.to_goal}".`;
+      } else if (fromGoal.id === toGoal.id) {
+        finalMessage = `⚠️ Origem e destino são a mesma meta.`;
+      } else if (fromGoal.current_amount < d.amount) {
+        const currentStr = fromGoal.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        finalMessage = `⚠️ A meta "${fromGoal.name}" só tem ${currentStr}. Não dá pra transferir ${d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`;
+      } else {
+        try {
+          const { addToReserve } = await import('./planning');
+
+          // Subtract from source
+          await addToReserve(fromGoal.id, -d.amount);
+          // Add to destination
+          await addToReserve(toGoal.id, d.amount);
+
+          const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const newFromBalance = (fromGoal.current_amount - d.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const newToBalance = (toGoal.current_amount + d.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          finalMessage = `✅ Transferência concluída!\n\n💸 ${formattedAmount}\n${fromGoal.name} → ${toGoal.name}\n\n📊 Novos saldos:\n• ${fromGoal.name}: ${newFromBalance}\n• ${toGoal.name}: ${newToBalance}`;
+        } catch (error) {
+          finalMessage = `❌ Erro ao transferir: ${error}`;
+        }
+      }
+    }
+  }
+
+  // Handle EDIT_GOAL - Edit goal properties
+  if (parsedResponse.intent === 'EDIT_GOAL') {
+    const d = parsedResponse.data;
+
+    if (!d.search_term) {
+      finalMessage = `❓ Qual meta você quer editar?`;
+    } else {
+      const { getReserves, updateReserve } = await import('./planning');
+      const goals = await getReserves();
+
+      const goal = goals.find(g =>
+        g.name.toLowerCase().includes(d.search_term.toLowerCase()) ||
+        d.search_term.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!goal) {
+        finalMessage = `📝 Não encontrei a meta "${d.search_term}".`;
+      } else if (!d.new_name && !d.new_target_amount && !d.new_deadline) {
+        finalMessage = `❓ O que você quer alterar na meta "${goal.name}"?\n\nPosso mudar:\n• Nome\n• Valor alvo\n• Prazo`;
+      } else {
+        try {
+          const updates: any = {};
+          const changes: string[] = [];
+
+          if (d.new_name) {
+            updates.name = d.new_name;
+            changes.push(`Nome: ${goal.name} → ${d.new_name}`);
+          }
+          if (d.new_target_amount !== undefined) {
+            updates.target_amount = d.new_target_amount;
+            const oldTarget = goal.target_amount?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'Sem meta';
+            const newTarget = d.new_target_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            changes.push(`Valor alvo: ${oldTarget} → ${newTarget}`);
+          }
+          if (d.new_deadline) {
+            updates.deadline = d.new_deadline;
+            changes.push(`Prazo: ${d.new_deadline}`);
+          }
+
+          await updateReserve(goal.id, updates);
+
+          finalMessage = `✅ Meta atualizada!\n\n${changes.map(c => `• ${c}`).join('\n')}`;
+        } catch (error) {
+          finalMessage = `❌ Erro ao editar: ${error}`;
+        }
+      }
+    }
+  }
+
+  // Handle DELETE_GOAL - Delete a goal
+  if (parsedResponse.intent === 'DELETE_GOAL') {
+    const d = parsedResponse.data;
+
+    if (!d.search_term) {
+      finalMessage = `❓ Qual meta você quer excluir?`;
+    } else {
+      const { getReserves, deleteReserve } = await import('./planning');
+      const goals = await getReserves();
+
+      const goal = goals.find(g =>
+        g.name.toLowerCase().includes(d.search_term.toLowerCase()) ||
+        d.search_term.toLowerCase().includes(g.name.toLowerCase())
+      );
+
+      if (!goal) {
+        finalMessage = `📝 Não encontrei a meta "${d.search_term}".`;
+      } else if (goal.current_amount > 0) {
+        const currentStr = goal.current_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        finalMessage = `⚠️ A meta "${goal.name}" ainda tem ${currentStr}.\n\nPara excluir, primeiro resgate o saldo:\n"Tirar ${goal.current_amount} da ${goal.name}"`;
+      } else {
+        try {
+          await deleteReserve(goal.id);
+          finalMessage = `✅ Meta "${goal.name}" excluída com sucesso!`;
+        } catch (error) {
+          finalMessage = `❌ Erro ao excluir: ${error}`;
+        }
+      }
     }
   }
 

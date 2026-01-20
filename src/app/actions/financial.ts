@@ -1849,9 +1849,6 @@ export async function checkAndCreateMonthlyClosing(): Promise<{
     }
 
     // 2. If not exists, calculate surplus for previous month
-    // Get financial status for previous month
-    const { getAccountStatement } = await import('./financial');
-
     // We need to aggregate ALL accounts (except savings)
     const { data: accounts } = await supabase
         .from('accounts')
@@ -1874,7 +1871,8 @@ export async function checkAndCreateMonthlyClosing(): Promise<{
         .eq('user_id', user.id)
         .gte('date', startDate)
         .lte('date', endDate)
-        .eq('is_paid', true);
+        .eq('is_paid', true)
+        .eq('is_reserve', false); // IMPORTANT: Exclude money already saved to goals
 
     if (movements) {
         movements.forEach(m => {

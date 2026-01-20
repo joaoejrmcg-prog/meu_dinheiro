@@ -113,8 +113,12 @@ export default function MonthlyClosingModal({ closing, onClose }: MonthlyClosing
                     ) : reserves.length === 0 ? (
                         <div className="text-center py-8 text-neutral-500">
                             <p>Nenhuma meta encontrada.</p>
-                            <button onClick={() => handleAction('saved_to_reserve')} className="mt-2 text-green-400 hover:underline">
-                                Criar "Reserva" automática
+                            <p className="text-sm mt-2">Crie uma meta primeiro em Planejamento &gt; Metas.</p>
+                            <button
+                                onClick={() => setStep('intro')}
+                                className="mt-4 px-4 py-2 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700"
+                            >
+                                Voltar
                             </button>
                         </div>
                     ) : (

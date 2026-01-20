@@ -203,12 +203,12 @@ export default function ReportsPage() {
                                 </p>
                                 <div className="space-y-3">
                                     <div className="flex justify-between">
-                                        <span className="text-neutral-400">Saldo Anterior</span>
-                                        <span className="text-neutral-300 font-medium">{formatCurrency(report.previousBalance)}</span>
+                                        <span className="text-neutral-400">Saldo Anterior/Outros</span>
+                                        <span className="text-neutral-300 font-medium">{formatCurrency(report.previousBalance + report.loansReceived + report.reservesUsed + report.reimbursements)}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-neutral-400">Entradas (+)</span>
-                                        <span className="text-green-400 font-medium">{formatCurrency(report.cashIn)}</span>
+                                        <span className="text-green-400 font-medium">{formatCurrency(report.realIncome)}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-neutral-400">Saídas (-)</span>

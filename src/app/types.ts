@@ -150,6 +150,9 @@ export type IntentType =
     | 'ADD_TO_GOAL'
     | 'WITHDRAW_FROM_GOAL'
     | 'CHECK_GOAL'
+    | 'TRANSFER_BETWEEN_GOALS'
+    | 'EDIT_GOAL'
+    | 'DELETE_GOAL'
     | 'NAVIGATE'
     | 'UNKNOWN';
 

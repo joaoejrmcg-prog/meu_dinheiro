@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Target, Plus, Trash2, PiggyBank, TrendingUp, Sparkles, Calendar, RefreshCw, AlertCircle, ArrowRight, Banknote, X, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Target, Plus, Trash2, PiggyBank, TrendingUp, TrendingDown, Sparkles, Calendar, RefreshCw, AlertCircle, ArrowRight, Banknote, X, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { getReserves, createReserve, deleteReserve, addToReserve } from "../actions/planning";
 import { getRecurrences, getMonthSummary, getBalanceProjection, MonthProjection } from "../actions/financial";
@@ -482,7 +482,9 @@ function ReserveForm({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 // ============ RESERVE CARD ============
 function ReserveCard({ reserve, onRefresh }: { reserve: Reserve; onRefresh: () => void }) {
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showWithdrawModal, setShowWithdrawModal] = useState(false);
     const [addAmount, setAddAmount] = useState('');
+    const [withdrawAmount, setWithdrawAmount] = useState('');
     const [saving, setSaving] = useState(false);
 
     const progress = reserve.target_amount ? Math.min(100, ((reserve.current_amount || 0) / reserve.target_amount) * 100) : 0;
@@ -510,6 +512,23 @@ function ReserveCard({ reserve, onRefresh }: { reserve: Reserve; onRefresh: () =
             await addToReserve(reserve.id, parseFloat(addAmount));
             setShowAddModal(false);
             setAddAmount('');
+            onRefresh();
+        } catch (e) { console.error(e); }
+        setSaving(false);
+    };
+
+    const handleWithdraw = async () => {
+        if (!withdrawAmount) return;
+        const amount = parseFloat(withdrawAmount);
+        if (amount > reserve.current_amount) {
+            alert('Saldo insuficiente na meta.');
+            return;
+        }
+        setSaving(true);
+        try {
+            await addToReserve(reserve.id, -amount);
+            setShowWithdrawModal(false);
+            setWithdrawAmount('');
             onRefresh();
         } catch (e) { console.error(e); }
         setSaving(false);
@@ -580,18 +599,35 @@ function ReserveCard({ reserve, onRefresh }: { reserve: Reserve; onRefresh: () =
                 </p>
             )}
 
-            {!showAddModal ? (
-                <button onClick={() => setShowAddModal(true)}
-                    className="w-full py-2 rounded-lg border border-neutral-700 text-neutral-400 text-sm hover:border-green-500/50 hover:text-green-400 transition-all flex items-center justify-center gap-2">
-                    <TrendingUp className="w-4 h-4" /> Adicionar
-                </button>
-            ) : (
+            {/* Action Buttons */}
+            {!showAddModal && !showWithdrawModal ? (
+                <div className="flex gap-2">
+                    <button onClick={() => setShowAddModal(true)}
+                        className="flex-1 py-2 rounded-lg border border-neutral-700 text-neutral-400 text-sm hover:border-green-500/50 hover:text-green-400 transition-all flex items-center justify-center gap-2">
+                        <TrendingUp className="w-4 h-4" /> Adicionar
+                    </button>
+                    {reserve.current_amount > 0 && (
+                        <button onClick={() => setShowWithdrawModal(true)}
+                            className="flex-1 py-2 rounded-lg border border-neutral-700 text-neutral-400 text-sm hover:border-orange-500/50 hover:text-orange-400 transition-all flex items-center justify-center gap-2">
+                            <TrendingDown className="w-4 h-4" /> Resgatar
+                        </button>
+                    )}
+                </div>
+            ) : showAddModal ? (
                 <div className="flex gap-2">
                     <input type="number" placeholder="Valor" value={addAmount} onChange={(e) => setAddAmount(e.target.value)}
                         className="flex-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500" autoFocus />
                     <button onClick={() => setShowAddModal(false)} className="px-3 py-2 rounded-lg bg-neutral-800 text-neutral-400 text-sm">✕</button>
                     <button onClick={handleAdd} disabled={saving || !addAmount}
                         className="px-4 py-2 rounded-lg bg-green-500 text-black font-semibold text-sm disabled:opacity-50">{saving ? '...' : '+'}</button>
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <input type="number" placeholder="Valor" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
+                        className="flex-1 bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-orange-500" autoFocus />
+                    <button onClick={() => setShowWithdrawModal(false)} className="px-3 py-2 rounded-lg bg-neutral-800 text-neutral-400 text-sm">✕</button>
+                    <button onClick={handleWithdraw} disabled={saving || !withdrawAmount}
+                        className="px-4 py-2 rounded-lg bg-orange-500 text-black font-semibold text-sm disabled:opacity-50">{saving ? '...' : '-'}</button>
                 </div>
             )}
         </div>
