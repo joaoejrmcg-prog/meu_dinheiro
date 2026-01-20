@@ -142,6 +142,7 @@ export type IntentType =
     | 'SET_AUTO_DEBIT'
     | 'CHECK_AUTO_DEBIT'
     | 'LIST_AUTO_DEBITS'
+    | 'CREATE_RECURRENCE'
     | 'CREATE_INSTALLMENT'
     | 'CREDIT_CARD_PURCHASE'
     | 'CREATE_LOAN'

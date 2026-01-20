@@ -431,11 +431,14 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
 16. **CREDIT_CARD_PURCHASE** (Compra no cartão de crédito) ⚠️ PRIORIDADE ALTA
    - **QUANDO USAR**: Quando o usuário menciona "no cartão", "no crédito", "cartão de crédito", ou menciona um nome de cartão específico (Nubank, Itaú, etc).
    - **IMPORTANTE**: Compras no cartão NÃO têm entrada e NÃO pedem data (a data é calculada automaticamente pelo fechamento/vencimento do cartão).
+   - **⚠️ HÍBRIDO (CARTÃO + ENTRADA)**: Se o usuário mencionar "cartão" E "entrada" juntos (ex: "10x no cartão com entrada"), USE CREDIT_CARD_PURCHASE com hasDownPayment: true. O sistema vai bloquear e explicar.
    - **SLOTS OBRIGATÓRIOS**: 
      1. \`description\` (O que comprou?)
      2. \`amount\` (Valor)
      3. \`installments\` (Quantas vezes? Use 1 se não mencionou parcelamento)
      4. \`card_name\` (OPCIONAL - nome do cartão. Se não especificado, usa o cartão principal)
+     5. \`hasDownPayment\` (OPCIONAL - true se mencionou "entrada" junto com cartão)
+     6. \`downPaymentValue\` (OPCIONAL - valor da entrada mencionada)
    - **Gatilhos**:
      - "Comprei X no cartão"
      - "Gastei X no crédito"
@@ -443,11 +446,15 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Comprei X em Yx no cartão"
      - "Comprei X no Nubank" (nome do cartão)
      - "X no crédito do Itaú"
+     - "Comprei X em Yx no cartão com entrada de Z" → hasDownPayment: true
+   - **⚠️ ASSINATURAS NO CARTÃO**: Se mencionar "assinei" + cartão → USE CREATE_RECURRENCE com card_name! Assinaturas são recorrentes.
+     - "Assinei Netflix 29,90 no Nubank" → CREATE_RECURRENCE, description: "Netflix", amount: 29.90, card_name: "Nubank", due_day: (perguntar)
    - **Exemplos**:
      - "Comprei uma janta de 120 no cartão" → CREDIT_CARD_PURCHASE, description: "janta", amount: 120, installments: 1
      - "Gastei 500 no cartão em 5x" → CREDIT_CARD_PURCHASE, description: "compra", amount: 500, installments: 5
      - "Paguei o tênis de 350 no Nubank" → CREDIT_CARD_PURCHASE, description: "tênis", amount: 350, installments: 1, card_name: "Nubank"
      - "Comprei geladeira de 3000 em 10x no cartão" → CREDIT_CARD_PURCHASE, description: "geladeira", amount: 3000, installments: 10
+     - "Comprei TV de 2000 em 10x no cartão com entrada de 200" → CREDIT_CARD_PURCHASE, description: "TV", amount: 2000, installments: 10, hasDownPayment: true, downPaymentValue: 200
    - **NÃO PERGUNTE**:
      - Se teve entrada (cartão nunca tem)
      - Data de vencimento (é calculada automaticamente)
@@ -1712,6 +1719,99 @@ export async function processCommand(input: string, history: string[] = [], inpu
         }
       } else {
         finalMessage = `❌ Erro ao lançar no cartão: ${result.error}`;
+      }
+    }
+  }
+
+  // Handle CREATE_RECURRENCE - create recurring expense/income (on account or card)
+  if (parsedResponse.intent === 'CREATE_RECURRENCE') {
+    const d = parsedResponse.data;
+
+    // Validate required fields
+    if (!d.description) {
+      finalMessage = `❓ Qual é a conta recorrente? (ex: Netflix, Spotify, Aluguel)`;
+    } else if (!d.card_name && !d.due_day) {
+      // Only ask for due_day if NOT a card subscription (cards use their own due_day)
+      finalMessage = `❓ Qual o dia do mês que vence a ${d.description}?`;
+    } else {
+      const { createRecurrence } = await import('./financial');
+      const { getDefaultAccount, getAccountByName, getCardByName } = await import('./assets');
+
+      try {
+        let accountId: string | undefined;
+        let cardId: string | undefined;
+
+        let dueDay: number;
+        let cardName: string | undefined;
+
+        // If card_name is provided, this is a card subscription
+        if (d.card_name) {
+          const card = await getCardByName(d.card_name);
+          if (card) {
+            cardId = card.id;
+            cardName = card.name;
+            dueDay = card.due_day; // Use card's due_day
+          } else {
+            finalMessage = `❌ Não encontrei o cartão "${d.card_name}". Você já cadastrou ele?`;
+            return {
+              intent: parsedResponse.intent as IntentType,
+              data: parsedResponse.data,
+              message: finalMessage,
+              confidence: 0.9
+            };
+          }
+        } else {
+          dueDay = parseInt(d.due_day);
+          // Otherwise use account
+          const account = d.account_name
+            ? await getAccountByName(d.account_name)
+            : await getDefaultAccount();
+          if (account) {
+            accountId = account.id;
+          }
+        }
+
+        // Calculate next due date
+        const today = new Date();
+        let nextDueDate: Date;
+
+        if (dueDay >= today.getDate()) {
+          nextDueDate = new Date(today.getFullYear(), today.getMonth(), dueDay);
+        } else {
+          nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay);
+        }
+        const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+
+        const recurrence = await createRecurrence({
+          description: d.description,
+          amount: d.amount || 0,
+          type: d.type || 'expense',
+          frequency: d.frequency || 'monthly',
+          next_due_date: nextDueDateStr,
+          account_id: accountId,
+          card_id: cardId,
+          is_auto_debit: d.is_auto_debit || false,
+          variable_amount: !d.amount
+        });
+
+        if (recurrence) {
+          const amountText = d.amount
+            ? ` de R$ ${d.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+            : ' (valor variável)';
+          const locationText = cardId
+            ? ` no **${cardName}**`
+            : '';
+          const scheduleText = cardId
+            ? '🔄 Cobrança mensal (vence junto com a fatura)'
+            : `🗓️ Todo dia ${dueDay}`;
+
+          finalMessage = `✅ Assinatura criada!\n\n📅 **${d.description}**${amountText}${locationText}\n${scheduleText}`;
+        } else {
+          finalMessage = `❌ Erro ao criar recorrência.`;
+        }
+      } catch (error) {
+        console.error('[CREATE_RECURRENCE] Error:', error);
+        finalMessage = `❌ Erro ao criar recorrência: ${error}`;
       }
     }
   }

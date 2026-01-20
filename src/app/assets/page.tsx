@@ -937,8 +937,8 @@ function CardsTab({ cards, onRefresh }: { cards: CreditCardType[]; onRefresh: ()
                                         {invoiceData.purchases.length === 0 ? (
                                             <p className="text-center text-neutral-500 text-sm py-4">Nenhuma compra nesta fatura.</p>
                                         ) : (
-                                            invoiceData.purchases.map((mov: any) => (
-                                                <div key={mov.id} className="flex items-center justify-between p-3 bg-neutral-800/30 rounded-lg border border-neutral-800">
+                                            invoiceData.purchases.map((mov: any, idx: number) => (
+                                                <div key={mov.id || `mov-${idx}`} className="flex items-center justify-between p-3 bg-neutral-800/30 rounded-lg border border-neutral-800">
                                                     <div className="flex-1 min-w-0">
                                                         <p className="text-sm text-white font-medium truncate">{mov.description}</p>
                                                         <p className="text-xs text-neutral-500">
