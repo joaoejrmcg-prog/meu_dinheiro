@@ -56,5 +56,28 @@ export async function completeOnboarding(preferences: {
         console.warn("Onboarding update warning:", error.message);
     }
 
+    // Create default "Reserva" goal for user (if doesn't exist)
+    try {
+        const { data: existingReserve } = await supabase
+            .from('reserves')
+            .select('id')
+            .eq('user_id', user.id)
+            .ilike('name', 'Reserva')
+            .single();
+
+        if (!existingReserve) {
+            await supabase.from('reserves').insert({
+                user_id: user.id,
+                name: 'Reserva',
+                current_amount: 0,
+                color: '#22c55e', // Green
+                target_amount: null // No target, just a savings bucket
+            });
+            console.log('[Onboarding] Created default Reserva for user');
+        }
+    } catch (e) {
+        console.log('[Onboarding] Reserva already exists or error:', e);
+    }
+
     return { success: true };
 }

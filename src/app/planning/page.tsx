@@ -116,7 +116,8 @@ export default function PlanningPage() {
                     )}
                 >
                     <Target className="w-4 h-4" />
-                    Metas
+                    <span className="hidden md:inline">Metas e Reserva</span>
+                    <span className="md:hidden">Metas</span>
                 </button>
                 <button
                     onClick={() => setActiveTab('commitments')}
