@@ -24,4 +24,5 @@
 - [ ] **Múltiplos Comandos na Mesma Frase** - Suportar "Gastei 50 no Nubank e 30 no Itaú" (hoje a IA só pega o primeiro).
 - [x] **Virada do Mês** - Resumo de como foi o mês no dia 1º. *(Já implementado via MonthlyClosingModal)*
 - [ ] **Classificação Automática** - IA sugerir categorias baseado no histórico.
+- [ ] **Categorização em Recorrências/Parcelamentos/Cartão** - A IA categoriza movimentos normais (REGISTER_MOVEMENT), mas não categoriza recorrências (CREATE_RECURRENCE), parcelamentos (CREATE_INSTALLMENT) ou compras no cartão (CREDIT_CARD_PURCHASE). Adicionar slot `category` no SYSTEM_INSTRUCTION e passar `category_id` nos handlers.
 - [x] **Simulação de Cenários (SIMULATE_SCENARIO)** - Implementar handler no backend (`ai.ts`) para responder a perguntas como "E se eu economizar 100 reais?". Atualmente só funciona scriptado no Tutorial.

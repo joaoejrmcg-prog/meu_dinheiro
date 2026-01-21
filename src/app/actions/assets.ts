@@ -680,11 +680,33 @@ export async function getInvoiceDetails(
         .lte('due_date', dueEnd.toISOString().split('T')[0])
         .order('due_date', { ascending: true });
 
+    // Also fetch active RECURRENCES that fall within this invoice period
+    // This ensures that future subscriptions (Spotify, Netflix) appear in the invoice projection
+    const { data: recurrences } = await supabase
+        .from('recurrences')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('card_id', cardId)
+        .eq('active', true)
+        .gte('next_due_date', dueStart.toISOString().split('T')[0])
+        .lte('next_due_date', dueEnd.toISOString().split('T')[0]);
+
     const purchases = (movements || []).map(m => ({
         description: m.description,
         amount: Number(m.amount),
         date: m.date
     }));
+
+    // Add recurrences to purchases list
+    if (recurrences) {
+        recurrences.forEach(rec => {
+            purchases.push({
+                description: `${rec.description} (Recorrência)`,
+                amount: Number(rec.amount),
+                date: rec.next_due_date // Use due date as the "date" for the invoice view
+            });
+        });
+    }
 
     const total = purchases.reduce((sum, p) => sum + p.amount, 0);
 

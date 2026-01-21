@@ -56,6 +56,7 @@ export function useCommandCenterLogic() {
     // Slot-filling state to maintain context between conversation turns
     const [pendingSlots, setPendingSlots] = useState<{
         intent?: string;
+        originalIntent?: string;  // For CREDIT_CARD_PURCHASE etc.
         description?: string;
         amount?: number;
         date?: string;
@@ -64,6 +65,8 @@ export function useCommandCenterLogic() {
         category?: string;
         payment_method?: string;  // 'bank' for PIX/Débito
         account_name?: string;    // Specific account if provided
+        installments?: number;    // For credit card purchases
+        card_name?: string;       // For credit card purchases
     } | null>(null);
 
     // Reconciliation state for multiple match scenarios
@@ -1560,6 +1563,35 @@ export function useCommandCenterLogic() {
                     return;
                 }
 
+                // ====================================
+                // CREDIT CARD PURCHASE HANDLING: Route to AI for proper processing
+                // ====================================
+                if (completedSlots.originalIntent === 'CREDIT_CARD_PURCHASE' || completedSlots.intent === 'CREDIT_CARD_PURCHASE') {
+                    // Build complete message with all context for AI
+                    const installmentsText = completedSlots.installments ? ` em ${completedSlots.installments}x` : '';
+                    const cardText = completedSlots.card_name ? ` no cartão ${completedSlots.card_name}` : '';
+                    const contextMessage = `Comprei ${completedSlots.description}${installmentsText}${cardText}, valor ${amount}`;
+
+                    // Clear pending slots and let AI handle it
+                    setPendingSlots(null);
+
+                    // Process via AI (which will route to CREDIT_CARD_PURCHASE handler)
+                    const usage = await checkAndIncrementUsage();
+                    if (!usage.allowed) {
+                        addMessage('assistant', '🛑 Limite diário atingido.', 'error', { skipRefund: true });
+                        return;
+                    }
+
+                    const response = await processCommand(contextMessage, [], inputType, userLevel);
+                    const msgType = response.message.includes('❌') ? 'error' : (response.message.includes('✅') ? 'success' : 'text');
+                    addMessage('assistant', response.message, msgType);
+
+                    if (response.message.includes('✅') && typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('transactionUpdated'));
+                    }
+                    return;
+                }
+
 
                 // Check if this is a PIX/Débito payment with default account = Carteira
                 if (completedSlots.payment_method === 'bank' && !completedSlots.account_name) {
@@ -1824,7 +1856,8 @@ export function useCommandCenterLogic() {
             if (response.intent === 'CONFIRMATION_REQUIRED' && response.data) {
                 // AI is asking for more info, save the partial slots
                 const partialSlots: typeof pendingSlots = {
-                    intent: 'REGISTER_MOVEMENT',
+                    intent: response.data.originalIntent || 'REGISTER_MOVEMENT',
+                    originalIntent: response.data.originalIntent,  // Preserve for routing
                     description: response.data.description,
                     amount: response.data.amount,
                     date: response.data.date,
@@ -1833,6 +1866,8 @@ export function useCommandCenterLogic() {
                     category: response.data.category,
                     payment_method: response.data.payment_method,  // Save PIX/Débito info
                     account_name: response.data.account_name,      // Save specific account
+                    installments: response.data.installments,      // For credit card purchases
+                    card_name: response.data.card_name,            // For credit card purchases
                 };
                 setPendingSlots(partialSlots);
                 console.log('📝 Saved pending slots:', partialSlots);

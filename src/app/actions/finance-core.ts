@@ -510,7 +510,7 @@ export async function findPendingMovement(searchTerm: string): Promise<{
     }
 
     if (!movements || movements.length === 0) {
-        return { success: false, error: `Nenhuma conta pendente encontrada com "${searchTerm}".` };
+        return { success: false, error: `Nenhuma conta pendente encontrada com "${searchTerm}". Se for uma conta única, diga: "Paguei X de ${searchTerm}"` };
     }
 
     return { success: true, movement: movements[0] };
