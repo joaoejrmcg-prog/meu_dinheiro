@@ -1,6 +1,6 @@
 "use server";
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
 import OpenAI from "openai";
 import { AIResponse, IntentType } from "../types";
 import { createMovement, getFinancialStatus, deleteLastMovement, updateLastMovementAccount } from "./finance-core";
@@ -11,18 +11,8 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-// Helper to get all available Gemini API keys
-const getGeminiApiKeys = () => {
-  const keys = [
-    process.env.GEMINI_SECRET_KEY_1,
-    process.env.GEMINI_SECRET_KEY_2,
-    process.env.GEMINI_SECRET_KEY_3,
-    process.env.GEMINI_SECRET_KEY_4,
-    process.env.GEMINI_SECRET_KEY_5
-  ].filter((key): key is string => !!key && key.length > 0);
-
-  return [...new Set(keys)];
-};
+import { getGeminiModel, getGeminiApiKeys } from "../lib/gemini";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const SYSTEM_INSTRUCTION = `
 Você é o "Guardião da Lógica Financeira" do app Meu Dinheiro.
@@ -1195,6 +1185,21 @@ export async function processCommand(input: string, history: string[] = [], inpu
         const prefix = parsedResponse.message?.startsWith('✅') ? '' : '✅ ';
         finalMessage = `${prefix}${parsedResponse.message}${accountSuffix}`;
         hitMilestone = result.hitMilestone || false;
+
+        // Advisor Reaction Hook (Empathy/Celebration)
+        try {
+          const { getAdvisorReaction } = await import('./advisor-reaction');
+          const advisorReaction = await getAdvisorReaction(
+            { description: d.description, amount: d.amount, type: movementType },
+            d.category || ''
+          );
+          if (advisorReaction) {
+            finalMessage += `\n\n${advisorReaction}`;
+          }
+        } catch (e) {
+          // Falha silenciosa - não travar o chat por causa do Advisor
+          console.error('Advisor reaction error:', e);
+        }
 
         // Handle compound commands: if there's a pending query, execute it and append
         if (d.also_query === 'GET_FINANCIAL_STATUS') {

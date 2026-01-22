@@ -26,3 +26,8 @@
 - [ ] **Classificação Automática** - IA sugerir categorias baseado no histórico.
 - [ ] **Categorização em Recorrências/Parcelamentos/Cartão** - A IA categoriza movimentos normais (REGISTER_MOVEMENT), mas não categoriza recorrências (CREATE_RECURRENCE), parcelamentos (CREATE_INSTALLMENT) ou compras no cartão (CREDIT_CARD_PURCHASE). Adicionar slot `category` no SYSTEM_INSTRUCTION e passar `category_id` nos handlers.
 - [x] **Simulação de Cenários (SIMULATE_SCENARIO)** - Implementar handler no backend (`ai.ts`) para responder a perguntas como "E se eu economizar 100 reais?". Atualmente só funciona scriptado no Tutorial.
+
+Perguntas e observaçoes preenchido pelo usuário: 
+- Está categorizando contas de cartao?
+Como o sistema lida com a diferenca se eu peco pra ajustar o valor da carteira?
+"Almoco de 50 no nubank" está no lugar errado. Essa frase lanca o valor na conta corrente nubank, nao no cartao de crédito.

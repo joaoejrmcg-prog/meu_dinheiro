@@ -1323,6 +1323,28 @@ export async function payInvoice(cardId: string, targetMonth?: number): Promise<
         return { success: false, error: updateError.message };
     }
 
+    // 4. Advance recurrences to next month (so they don't show as pending anymore)
+    if (recurrences && recurrences.length > 0) {
+        for (const rec of recurrences) {
+            const recDateStr = rec.next_due_date ? new Date(rec.next_due_date).toISOString().split('T')[0] : null;
+            if (!recDateStr) continue;
+
+            // Only advance if this recurrence was in the current invoice period
+            if (recDateStr >= startStr && recDateStr <= endStr) {
+                const nextMonth = new Date(rec.next_due_date);
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                const nextDueDateStr = nextMonth.toISOString().split('T')[0];
+
+                await supabase
+                    .from('recurrences')
+                    .update({ next_due_date: nextDueDateStr })
+                    .eq('id', rec.id);
+
+                console.log(`[PAY_INVOICE] Advanced recurrence "${rec.description}" to next month: ${nextDueDateStr}`);
+            }
+        }
+    }
+
     // Calculate total paid
     const { data: paidMovements } = await supabase
         .from('movements')

@@ -116,7 +116,7 @@ function FeatureGuide() {
     return (
         <div className="space-y-6">
             {/* Category Tabs */}
-            <div className="flex overflow-x-auto pb-4 gap-3 scrollbar-thin scrollbar-thumb-neutral-800 scrollbar-track-transparent">
+            <div className="flex flex-wrap pb-4 gap-3">
                 {FEATURE_CATEGORIES.map((cat) => {
                     const Icon = cat.icon;
                     const isActive = activeCategory.id === cat.id;
@@ -139,7 +139,7 @@ function FeatureGuide() {
             </div>
 
             {/* Active Content */}
-            <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-4 md:p-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="flex items-start gap-4 mb-6">
                     <div className={`p-3 rounded-xl ${activeCategory.bg}`}>
                         <activeCategory.icon className={`w-6 h-6 ${activeCategory.color}`} />
@@ -235,7 +235,7 @@ export default function AjudaPage() {
     };
 
     return (
-        <div className="max-w-6xl mx-auto space-y-12 pb-12">
+        <div className="max-w-6xl mx-auto space-y-12 pb-12 px-4">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-neutral-100 flex items-center gap-2">
                     <HelpCircle className="text-blue-500" />

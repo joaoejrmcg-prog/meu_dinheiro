@@ -1,0 +1,61 @@
+# Guia de Funcionalidades - Meu Dinheiro IA
+
+## Registros Básicos
+Comandos essenciais para o dia a dia.
+
+- "Ganhei 2000 de salário": Registra uma entrada de dinheiro. O saldo da sua conta padrão será atualizado automaticamente.
+- "Gastei 50 no mercado": Registra uma saída. Se não especificar a conta, uso a sua conta padrão.
+- "Paguei a conta de luz": Identifico que é uma despesa e já registro o pagamento na data de hoje.
+- "Cancela o último": Errou? Sem problemas. Esse comando desfaz o último registro que você fez.
+- "O valor era 60": Corrige apenas o valor do último lançamento, mantendo o resto igual.
+- "Era no Itaú": Muda a conta do último lançamento. Útil se você esqueceu de avisar onde gastou.
+
+## Contas & Bancos
+Gerencie suas contas bancárias e saldos.
+
+- "Criar conta no Nubank": Cria uma nova conta para você controlar o saldo separadamente.
+- "Saldo do Itaú é 500": Ajuste manual. Útil quando o saldo real do banco não bate com o do app.
+- "Transferir 500 para Poupança": Move dinheiro de uma conta para outra sem alterar seu patrimônio total.
+- "Quanto tenho no total?": Soma o saldo de todas as suas contas cadastradas para te dar uma visão geral.
+- "Listar minhas contas": Mostra todas as contas que você tem cadastradas e seus saldos atuais.
+
+## Cartão de Crédito
+Controle total dos seus cartões.
+
+- "Criar cartão Nubank fecha dia 10 vence 17": Configura um cartão inteligente que sabe calcular vencimentos e melhores datas de compra.
+- "Almoço de 50 no Nubank": Lança uma compra no crédito. Só vai descontar do seu saldo quando você pagar a fatura.
+- "TV de 2000 em 10x no Nubank": Parcelamento inteligente. Já cria as 10 parcelas nas faturas futuras automaticamente.
+- "Qual a fatura do Nubank?": Calcula o total da fatura atual, somando compras à vista e parcelas que caem neste mês.
+- "Paguei a fatura do Nubank": Fecha a fatura, marca os itens como pagos e desconta o valor total da sua conta.
+- "Qual meu limite no Nubank?": Mostra quanto você ainda pode gastar, baseado no limite total menos os gastos atuais.
+- "Qual melhor cartão pra comprar hoje?": Analisa seus cartões e datas de fechamento para sugerir onde você ganha mais prazo.
+- "Alterar limite do Nubank para 5000": Atualiza o limite do seu cartão para que eu possa calcular o quanto você ainda pode gastar.
+- "Mudar vencimento do Itaú para dia 10": Corrige a data de vencimento do cartão. Útil se você alterou a data no banco.
+- "Corrigir fechamento do cartão XP": Ajusta o dia que a fatura fecha, para eu saber exatamente em qual mês as compras vão cair.
+
+## Recorrências
+Contas fixas e assinaturas.
+
+- "Todo dia 10 pago 150 de internet": Esse comando cria uma conta mensal fixa. Todo dia 10 eu te lembro aqui no app pra você não esquecer.
+- "Assinei Spotify de 21,90 no Nubank": Esse valor vai somar na sua fatura Nubank todo mês. Você pode cancelar quando quiser.
+- "Recebo 5000 todo dia 5": Garante que seu salário ou renda extra entre automaticamente no planejamento do mês.
+- "A internet é débito automático": Avisa que essa conta sai direto do banco. Assim eu já marco como paga no dia certo.
+- "Quais são minhas contas fixas?": Lista tudo que você cadastrou como recorrente para você revisar seus gastos fixos.
+
+## Empréstimos
+Controle quem te deve e a quem você deve.
+
+- "Peguei 1000 emprestado do João": Registra uma dívida. O dinheiro entra na sua conta, mas fica registrado que você deve ao João.
+- "Emprestei 500 para Maria": Registra que você tem dinheiro a receber. Sai da sua conta, mas cria um crédito com a Maria.
+- "Paguei 200 pro João": Registra que você devolveu parte do dinheiro. O saldo devedor diminui automaticamente.
+- "Maria me pagou 100": Registra que você recebeu de volta. O dinheiro entra na conta e a dívida da Maria diminui.
+- "Quanto devo pro João?": Consulta rápida para saber exatamente quanto ainda falta pagar (ou receber).
+
+## Metas & Planejamento
+Planeje seu futuro financeiro.
+
+- "Criar meta Viagem de 5000": Define um objetivo financeiro para te ajudar a focar e guardar dinheiro.
+- "Guardei 200 pra Viagem": Reserva esse valor. Ele continua na sua conta, mas fica "carimbado" para a viagem.
+- "Como está a meta Viagem?": Mostra uma barra de progresso e quanto falta para atingir seu objetivo.
+- "Previsão para o mês que vem": Bola de cristal financeira. Projeto seu saldo futuro baseada nas contas fixas e parcelas.
+- "E se eu economizar 100 por mês?": Simulação. Te mostro quanto você teria no futuro se guardasse esse valor mensalmente.
