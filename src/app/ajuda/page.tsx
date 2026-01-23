@@ -2,179 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { sendSupportMessage, getUserMessages } from '../actions/support';
-import { HelpCircle, Mail, MessageSquare, ChevronDown, ChevronUp, Send, Clock, CheckCircle2, BookOpen, Lightbulb, CreditCard, Landmark, Repeat, Handshake, Target, Copy, Check } from 'lucide-react';
-
-const FEATURE_CATEGORIES = [
-    {
-        id: 'basics',
-        label: 'Registros Básicos',
-        icon: BookOpen,
-        color: 'text-green-400',
-        bg: 'bg-green-500/20',
-        description: 'Comandos essenciais para o dia a dia.',
-        commands: [
-            { text: 'Ganhei 2000 de salário', desc: 'Registra uma entrada de dinheiro. O saldo da sua conta padrão será atualizado automaticamente.' },
-            { text: 'Gastei 50 no mercado', desc: 'Registra uma saída. Se não especificar a conta, uso a sua conta padrão.' },
-            { text: 'Paguei a conta de luz', desc: 'Identifico que é uma despesa e já registro o pagamento na data de hoje.' },
-            { text: 'Cancela o último', desc: 'Errou? Sem problemas. Esse comando desfaz o último registro que você fez.' },
-            { text: 'O valor era 60', desc: 'Corrige apenas o valor do último lançamento, mantendo o resto igual.' },
-            { text: 'Era no Itaú', desc: 'Muda a conta do último lançamento. Útil se você esqueceu de avisar onde gastou.' }
-        ]
-    },
-    {
-        id: 'accounts',
-        label: 'Contas & Bancos',
-        icon: Landmark,
-        color: 'text-blue-400',
-        bg: 'bg-blue-500/20',
-        description: 'Gerencie suas contas bancárias e saldos.',
-        commands: [
-            { text: 'Criar conta no Nubank', desc: 'Cria uma nova conta para você controlar o saldo separadamente.' },
-            { text: 'Saldo do Itaú é 500', desc: 'Ajuste manual. Útil quando o saldo real do banco não bate com o do app.' },
-            { text: 'Transferir 500 para Poupança', desc: 'Move dinheiro de uma conta para outra sem alterar seu patrimônio total.' },
-            { text: 'Quanto tenho no total?', desc: 'Soma o saldo de todas as suas contas cadastradas para te dar uma visão geral.' },
-            { text: 'Listar minhas contas', desc: 'Mostra todas as contas que você tem cadastradas e seus saldos atuais.' }
-        ]
-    },
-    {
-        id: 'cards',
-        label: 'Cartão de Crédito',
-        icon: CreditCard,
-        color: 'text-purple-400',
-        bg: 'bg-purple-500/20',
-        description: 'Controle total dos seus cartões.',
-        commands: [
-            { text: 'Criar cartão Nubank fecha dia 10 vence 17', desc: 'Configura um cartão inteligente que sabe calcular vencimentos e melhores datas de compra.' },
-            { text: 'Almoço de 50 no Nubank', desc: 'Lança uma compra no crédito. Só vai descontar do seu saldo quando você pagar a fatura.' },
-            { text: 'TV de 2000 em 10x no Nubank', desc: 'Parcelamento inteligente. Já cria as 10 parcelas nas faturas futuras automaticamente.' },
-            { text: 'Qual a fatura do Nubank?', desc: 'Calcula o total da fatura atual, somando compras à vista e parcelas que caem neste mês.' },
-            { text: 'Paguei a fatura do Nubank', desc: 'Fecha a fatura, marca os itens como pagos e desconta o valor total da sua conta.' },
-            { text: 'Qual meu limite no Nubank?', desc: 'Mostra quanto você ainda pode gastar, baseado no limite total menos os gastos atuais.' },
-            { text: 'Qual melhor cartão pra comprar hoje?', desc: 'Analisa seus cartões e datas de fechamento para sugerir onde você ganha mais prazo.' },
-            { text: 'Alterar limite do Nubank para 5000', desc: 'Atualiza o limite do seu cartão para que eu possa calcular o quanto você ainda pode gastar.' },
-            { text: 'Mudar vencimento do Itaú para dia 10', desc: 'Corrige a data de vencimento do cartão. Útil se você alterou a data no banco.' },
-            { text: 'Corrigir fechamento do cartão XP', desc: 'Ajusta o dia que a fatura fecha, para eu saber exatamente em qual mês as compras vão cair.' }
-        ]
-    },
-    {
-        id: 'recurrence',
-        label: 'Recorrências',
-        icon: Repeat,
-        color: 'text-pink-400',
-        bg: 'bg-pink-500/20',
-        description: 'Contas fixas e assinaturas.',
-        commands: [
-            { text: 'Todo dia 10 pago 150 de internet', desc: 'Esse comando cria uma conta mensal fixa. Todo dia 10 eu te lembro aqui no app pra você não esquecer.' },
-            { text: 'Assinei Spotify de 21,90 no Nubank', desc: 'Esse valor vai somar na sua fatura Nubank todo mês. Você pode cancelar quando quiser.' },
-            { text: 'Recebo 5000 todo dia 5', desc: 'Garante que seu salário ou renda extra entre automaticamente no planejamento do mês.' },
-            { text: 'A internet é débito automático', desc: 'Avisa que essa conta sai direto do banco. Assim eu já marco como paga no dia certo.' },
-            { text: 'Quais são minhas contas fixas?', desc: 'Lista tudo que você cadastrou como recorrente para você revisar seus gastos fixos.' }
-        ]
-    },
-    {
-        id: 'loans',
-        label: 'Empréstimos',
-        icon: Handshake,
-        color: 'text-orange-400',
-        bg: 'bg-orange-500/20',
-        description: 'Controle quem te deve e a quem você deve.',
-        commands: [
-            { text: 'Peguei 1000 emprestado do João', desc: 'Registra uma dívida. O dinheiro entra na sua conta, mas fica registrado que você deve ao João.' },
-            { text: 'Emprestei 500 para Maria', desc: 'Registra que você tem dinheiro a receber. Sai da sua conta, mas cria um crédito com a Maria.' },
-            { text: 'Paguei 200 pro João', desc: 'Registra que você devolveu parte do dinheiro. O saldo devedor diminui automaticamente.' },
-            { text: 'Maria me pagou 100', desc: 'Registra que você recebeu de volta. O dinheiro entra na conta e a dívida da Maria diminui.' },
-            { text: 'Quanto devo pro João?', desc: 'Consulta rápida para saber exatamente quanto ainda falta pagar (ou receber).' }
-        ]
-    },
-    {
-        id: 'goals',
-        label: 'Metas & Planejamento',
-        icon: Target,
-        color: 'text-cyan-400',
-        bg: 'bg-cyan-500/20',
-        description: 'Planeje seu futuro financeiro.',
-        commands: [
-            { text: 'Criar meta Viagem de 5000', desc: 'Define um objetivo financeiro para te ajudar a focar e guardar dinheiro.' },
-            { text: 'Guardei 200 pra Viagem', desc: 'Reserva esse valor. Ele continua na sua conta, mas fica "carimbado" para a viagem.' },
-            { text: 'Como está a meta Viagem?', desc: 'Mostra uma barra de progresso e quanto falta para atingir seu objetivo.' },
-            { text: 'Previsão para o mês que vem', desc: 'Bola de cristal financeira. Projeto seu saldo futuro baseada nas contas fixas e parcelas.' },
-            { text: 'E se eu economizar 100 por mês?', desc: 'Simulação. Te mostro quanto você teria no futuro se guardasse esse valor mensalmente.' }
-        ]
-    }
-];
-
-function FeatureGuide() {
-    const [activeCategory, setActiveCategory] = useState(FEATURE_CATEGORIES[0]);
-    const [copiedText, setCopiedText] = useState<string | null>(null);
-
-    const handleCopy = (text: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedText(text);
-        setTimeout(() => setCopiedText(null), 2000);
-    };
-
-    return (
-        <div className="space-y-6">
-            {/* Category Tabs */}
-            <div className="flex flex-wrap pb-4 gap-3">
-                {FEATURE_CATEGORIES.map((cat) => {
-                    const Icon = cat.icon;
-                    const isActive = activeCategory.id === cat.id;
-                    return (
-                        <button
-                            key={cat.id}
-                            onClick={() => setActiveCategory(cat)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap ${isActive
-                                ? 'bg-neutral-800 border-neutral-700 text-neutral-100 shadow-lg scale-105'
-                                : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-300'
-                                }`}
-                        >
-                            <div className={`p-1 rounded-md ${isActive ? cat.bg : 'bg-neutral-800'}`}>
-                                <Icon className={`w-4 h-4 ${isActive ? cat.color : 'text-neutral-500'}`} />
-                            </div>
-                            <span className="text-sm font-medium">{cat.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* Active Content */}
-            <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-4 md:p-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div className="flex items-start gap-4 mb-6">
-                    <div className={`p-3 rounded-xl ${activeCategory.bg}`}>
-                        <activeCategory.icon className={`w-6 h-6 ${activeCategory.color}`} />
-                    </div>
-                    <div>
-                        <h3 className={`text-lg font-bold ${activeCategory.color}`}>{activeCategory.label}</h3>
-                        <p className="text-sm text-neutral-400">{activeCategory.description}</p>
-                    </div>
-                </div>
-
-                <div className="grid gap-3">
-                    {activeCategory.commands.map((cmd, idx) => (
-                        <button
-                            key={idx}
-                            onClick={() => handleCopy(cmd.text)}
-                            className="group flex items-center justify-between bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 p-3 rounded-xl transition-all text-left w-full"
-                        >
-                            <div>
-                                <code className="text-sm text-neutral-200 font-medium block mb-1">"{cmd.text}"</code>
-                                <span className="text-xs text-neutral-500 group-hover:text-neutral-400 transition-colors">{cmd.desc}</span>
-                            </div>
-                            <div className="text-neutral-600 group-hover:text-neutral-400 transition-colors">
-                                {copiedText === cmd.text ? (
-                                    <Check className="w-4 h-4 text-green-500" />
-                                ) : (
-                                    <Copy className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                )}
-                            </div>
-                        </button>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-}
+import { HelpCircle, Mail, MessageSquare, ChevronDown, ChevronUp, Send, Clock, CheckCircle2, BookOpen, Lightbulb } from 'lucide-react';
 
 export default function AjudaPage() {
     const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -235,7 +63,7 @@ export default function AjudaPage() {
     };
 
     return (
-        <div className="max-w-6xl mx-auto space-y-12 pb-12 px-4">
+        <div className="max-w-6xl mx-auto space-y-12 pb-12">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-neutral-100 flex items-center gap-2">
                     <HelpCircle className="text-blue-500" />
@@ -253,7 +81,92 @@ export default function AjudaPage() {
                             Guia de Funcionalidades
                         </h2>
 
-                        <FeatureGuide />
+                        {/* Level 1: Basics */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-green-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center text-xs">1</span>
+                                Nível 1: Básico
+                            </h3>
+                            <p className="text-sm text-neutral-400">Registre suas receitas e despesas conversando naturalmente:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Ganhei 2000 de salário"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Gastei 50 no mercado"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Paguei a conta de luz"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Cancela o último"</code>
+                            </div>
+                        </div>
+
+                        {/* Level 2: Intermediate */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-blue-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-xs">2</span>
+                                Nível 2: Intermediário
+                            </h3>
+                            <p className="text-sm text-neutral-400">Múltiplas contas, transferências e contas recorrentes:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Criar conta no Nubank"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Transferir 500 para Poupança"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Todo dia 10 pago 150 de internet"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"A internet é débito automático"</code>
+                            </div>
+                        </div>
+
+                        {/* Level 3: Credit Cards */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-purple-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center text-xs">3</span>
+                                Nível 3: Cartões de Crédito
+                            </h3>
+                            <p className="text-sm text-neutral-400">Gerencie cartões, compras parceladas e faturas:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Cadastrar cartão Nubank, fecha dia 15, vence dia 22"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Comprei 600 em 6x no Nubank"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Qual a fatura do Nubank?"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Paguei a fatura do Nubank"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Qual o melhor cartão pra comprar hoje?"</code>
+                            </div>
+                        </div>
+
+                        {/* Level 4: Advanced */}
+                        <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                            <h3 className="font-bold text-orange-400 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-xs">4</span>
+                                Nível 4: Empréstimos e Simulações
+                            </h3>
+                            <p className="text-sm text-neutral-400">Empréstimos e simulações financeiras:</p>
+                            <div className="grid gap-2">
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Peguei 1000 emprestado do João"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Emprestei 500 para Maria"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"Paguei 200 pro João"</code>
+                                <code className="bg-neutral-800 px-3 py-2 rounded-lg text-sm text-neutral-300">"E se eu economizar 100 por mês?"</code>
+                            </div>
+                        </div>
+
+                        {/* Tips Section */}
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 space-y-3">
+                            <h3 className="font-bold text-green-400 flex items-center gap-2">
+                                <Lightbulb className="w-5 h-5" />
+                                Dicas Importantes
+                            </h3>
+                            <ul className="text-sm text-neutral-300 space-y-2">
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Não duplique cartão:</strong> Compras no crédito não saem da conta até você pagar a fatura.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Transferências entre contas:</strong> Não são receita nem despesa. Use "transferir" para mover dinheiro.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Corrigir erros:</strong> Diga "cancela o último" ou "o valor era 50" para corrigir.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <span className="text-green-400">•</span>
+                                    <span><strong>Virada do mês:</strong> No 1º dia, você verá um resumo do mês anterior.</span>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
 
                     {/* FAQ Section */}

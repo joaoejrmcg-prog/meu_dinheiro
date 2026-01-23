@@ -2,6 +2,7 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { Movement, Recurrence } from '../types';
 
 async function getSupabase() {
@@ -1237,10 +1238,10 @@ export async function payInvoice(cardId: string, targetMonth?: number): Promise<
 
     console.log(`[PAY_INVOICE] Looking for unpaid movements on card ${card.name} with due_date in ${startStr} to ${endStr}`);
 
-    // 1. Find all unpaid movements for this card in the invoice period
+    // Find all unpaid movements for this card in the invoice period
     const { data: movements, error: fetchError } = await supabase
         .from('movements')
-        .select('id, amount, description')
+        .select('id, amount')
         .eq('user_id', user.id)
         .eq('card_id', cardId)
         .eq('is_paid', false)
@@ -1251,111 +1252,26 @@ export async function payInvoice(cardId: string, targetMonth?: number): Promise<
         return { success: false, error: fetchError.message };
     }
 
-    // 2. Find active recurrences for this card that fall in this period
-    const { data: recurrences, error: recError } = await supabase
-        .from('recurrences')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('card_id', cardId) // Linked to this card
-        .eq('active', true);
-
-    const movementsToPay: string[] = movements?.map(m => m.id) || [];
-    let createdCount = 0;
-
-    console.log(`[PAY_INVOICE] Recurrences query result:`, {
-        count: recurrences?.length || 0,
-        error: recError?.message,
-        cardId,
-        recurrences: recurrences?.map(r => ({ description: r.description, card_id: r.card_id, next_due_date: r.next_due_date }))
-    });
-
-    if (recurrences && recurrences.length > 0) {
-        console.log(`[PAY_INVOICE] Found ${recurrences.length} active recurrences for card ${card.name}`);
-
-        for (const rec of recurrences) {
-            // Use the recurrence's next_due_date to determine if it belongs to this invoice
-            const recDateStr = rec.next_due_date ? new Date(rec.next_due_date).toISOString().split('T')[0] : null;
-            if (!recDateStr) continue;
-            // Check if this date falls within the invoice period
-            if (recDateStr >= startStr && recDateStr <= endStr) {
-                // Check if a movement already exists for this recurrence in this period
-                const alreadyExists = movements?.some(m =>
-                    m.description.toLowerCase() === rec.description.toLowerCase()
-                );
-                if (!alreadyExists) {
-                    console.log(`[PAY_INVOICE] Creating missing movement for recurrence: ${rec.description}`);
-                    const { data: newMov, error: createError } = await supabase
-                        .from('movements')
-                        .insert({
-                            user_id: user.id,
-                            description: rec.description,
-                            amount: rec.amount,
-                            type: 'expense',
-                            date: recDateStr,
-                            due_date: recDateStr,
-                            is_paid: false, // Will be marked true shortly
-                            card_id: cardId,
-                            category_id: rec.category_id
-                        })
-                        .select('id')
-                        .single();
-
-                    if (newMov) {
-                        movementsToPay.push(newMov.id);
-                        createdCount++;
-                    }
-                }
-            }
-        }
-    }
-
-    if (movementsToPay.length === 0) {
+    if (!movements || movements.length === 0) {
         return { success: true, count: 0, totalPaid: 0 };
     }
 
-    // 3. Mark all as paid
+    // Mark all as paid
+    const ids = movements.map(m => m.id);
+    const totalPaid = movements.reduce((sum, m) => sum + Number(m.amount), 0);
+
     const { error: updateError } = await supabase
         .from('movements')
         .update({ is_paid: true })
-        .in('id', movementsToPay);
+        .in('id', ids);
 
     if (updateError) {
         return { success: false, error: updateError.message };
     }
 
-    // 4. Advance recurrences to next month (so they don't show as pending anymore)
-    if (recurrences && recurrences.length > 0) {
-        for (const rec of recurrences) {
-            const recDateStr = rec.next_due_date ? new Date(rec.next_due_date).toISOString().split('T')[0] : null;
-            if (!recDateStr) continue;
+    console.log(`[PAY_INVOICE] Marked ${movements.length} movements as paid, total: R$ ${totalPaid.toFixed(2)}`);
 
-            // Only advance if this recurrence was in the current invoice period
-            if (recDateStr >= startStr && recDateStr <= endStr) {
-                const nextMonth = new Date(rec.next_due_date);
-                nextMonth.setMonth(nextMonth.getMonth() + 1);
-                const nextDueDateStr = nextMonth.toISOString().split('T')[0];
-
-                await supabase
-                    .from('recurrences')
-                    .update({ next_due_date: nextDueDateStr })
-                    .eq('id', rec.id);
-
-                console.log(`[PAY_INVOICE] Advanced recurrence "${rec.description}" to next month: ${nextDueDateStr}`);
-            }
-        }
-    }
-
-    // Calculate total paid
-    const { data: paidMovements } = await supabase
-        .from('movements')
-        .select('amount')
-        .in('id', movementsToPay);
-
-    const totalPaid = paidMovements?.reduce((sum, m) => sum + m.amount, 0) || 0;
-
-    console.log(`[PAY_INVOICE] Marked ${movementsToPay.length} movements as paid (created ${createdCount} from recurrences). Total: R$ ${totalPaid.toFixed(2)}`);
-
-    return { success: true, count: movementsToPay.length, totalPaid };
+    return { success: true, count: movements.length, totalPaid };
 }
 
 // ============ SUMMARY ============
@@ -1704,17 +1620,16 @@ export async function getCalendarMovements(month: number, year: number): Promise
         card_name: mov.credit_cards?.name || undefined
     }));
 
-    // 2. Get active recurrences (with account and card name joins)
+    // 2. Get active recurrences (with account name join)
     const { data: recurrencesRaw } = await supabase
         .from('recurrences')
-        .select('*, accounts(name), credit_cards(name)')
+        .select('*, accounts(name)')
         .eq('user_id', user.id)
         .eq('active', true);
 
     const recurrences = (recurrencesRaw || []).map(rec => ({
         ...rec,
-        account_name: rec.accounts?.name,
-        card_name: rec.credit_cards?.name
+        account_name: rec.accounts?.name
     }));
 
     // Group by date
@@ -1819,8 +1734,7 @@ export async function getCalendarMovements(month: number, year: number): Promise
                 is_recurrence: true,
                 recurrence_id: rec.id,
                 is_auto_debit: rec.is_auto_debit || false,
-                account_name: rec.account_name,
-                card_name: rec.card_name
+                account_name: rec.account_name
             };
 
             day.movements.push(virtualMovement);
@@ -2170,4 +2084,79 @@ export async function processMonthlyClosing(params: {
     if (error) return { success: false, error: error.message };
 
     return { success: true };
+}
+
+/**
+ * Adjust account balance and create an adjustment movement
+ */
+export async function adjustAccountBalance(accountId: string, newBalance: number): Promise<{
+    success: boolean;
+    error?: string;
+    adjustmentAmount?: number;
+    accountName?: string;
+}> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado" };
+
+    // 1. Get current account balance
+    const { data: account, error: accError } = await supabase
+        .from('accounts')
+        .select('name, balance')
+        .eq('id', accountId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (accError || !account) {
+        return { success: false, error: "Conta não encontrada." };
+    }
+
+    const currentBalance = account.balance;
+    const diff = newBalance - currentBalance;
+
+    // If no difference, nothing to do
+    if (Math.abs(diff) < 0.01) {
+        return { success: true, adjustmentAmount: 0, accountName: account.name };
+    }
+
+    // 2. Create adjustment movement
+    // Use 'income' for positive diff (surplus) and 'expense' for negative diff (deficit)
+    // This ensures compatibility with all existing balance calculations
+    const type = diff > 0 ? 'income' : 'expense';
+    const amount = Math.abs(diff);
+    const description = diff > 0
+        ? 'Ajuste de saldo (Crédito)'
+        : 'Ajuste de saldo (Débito)';
+
+    const { error: movError } = await supabase
+        .from('movements')
+        .insert({
+            user_id: user.id,
+            description: description,
+            amount: amount,
+            type: type,
+            date: new Date().toISOString().split('T')[0],
+            account_id: accountId,
+            is_paid: true,
+            is_loan: false,
+            is_reserve: false,
+            is_reimbursement: false
+        });
+
+    if (movError) {
+        return { success: false, error: `Erro ao criar movimento de ajuste: ${movError.message}` };
+    }
+
+    // 3. Update account balance
+    const { error: updateError } = await supabase
+        .from('accounts')
+        .update({ balance: newBalance })
+        .eq('id', accountId);
+
+    if (updateError) {
+        return { success: false, error: `Erro ao atualizar saldo: ${updateError.message}` };
+    }
+
+    revalidatePath('/', 'layout');
+    return { success: true, adjustmentAmount: diff, accountName: account.name };
 }

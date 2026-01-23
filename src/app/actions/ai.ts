@@ -1,6 +1,6 @@
 "use server";
 
-
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import { AIResponse, IntentType } from "../types";
 import { createMovement, getFinancialStatus, deleteLastMovement, updateLastMovementAccount } from "./finance-core";
@@ -11,8 +11,18 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-import { getGeminiModel, getGeminiApiKeys } from "../lib/gemini";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// Helper to get all available Gemini API keys
+const getGeminiApiKeys = () => {
+  const keys = [
+    process.env.GEMINI_SECRET_KEY_1,
+    process.env.GEMINI_SECRET_KEY_2,
+    process.env.GEMINI_SECRET_KEY_3,
+    process.env.GEMINI_SECRET_KEY_4,
+    process.env.GEMINI_SECRET_KEY_5
+  ].filter((key): key is string => !!key && key.length > 0);
+
+  return [...new Set(keys)];
+};
 
 const SYSTEM_INSTRUCTION = `
 Você é o "Guardião da Lógica Financeira" do app Meu Dinheiro.
@@ -90,7 +100,6 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`is_paid\`: boolean. Se tem \`due_date\` no futuro, marcar como \`false\`. Se for pagamento à vista/imediato, marcar como \`true\`.
      - \`is_loan\`: boolean.
      - \`loan_type\`: 'taken' (peguei) | 'given' (emprestei).
-     - **IMPORTANTE PARA EMPRÉSTIMOS**: Use o slot \`description\` para o nome da pessoa/entidade (ex: "João", "Banco X").
      - \`is_reserve\`: boolean.
      - \`reserve_name\`: Nome da reserva (ex: "Viagem").
    - **IMPORTANTE**: NÃO pergunte em qual conta o dinheiro entrou/saiu. O sistema usa a conta padrão automaticamente.
@@ -238,17 +247,6 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`account_type\`: Tipo da conta - "bank" (padrão) ou "savings".
    - **Ação**: Cria a conta e confirma para o usuário.
 
-10a. **LIST_ACCOUNTS** (Listar contas do usuário)
-   - **QUANDO USAR**: Quando o usuário quer ver todas as suas contas bancárias e saldos.
-   - **Gatilhos**:
-     - "Listar minhas contas"
-     - "Quais são minhas contas?"
-     - "Mostrar minhas contas"
-     - "Ver saldos das contas"
-     - "Quanto tenho em cada conta?"
-     - "Quanto tenho no total?"
-   - **Ação**: Busca todas as contas do usuário e exibe com nome, tipo e saldo.
-
 10b. **CREATE_CREDIT_CARD** (Criar cartão de crédito) ⚠️ DIFERENTE DE CONTA!
    - **QUANDO USAR**: Quando o usuário quer criar um CARTÃO DE CRÉDITO (não conta corrente).
    - **Gatilhos**:
@@ -318,46 +316,19 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`target_month\`: Mês da fatura 1-12 (OPCIONAL, padrão=última fatura vencida).
    - **Ação**: Marca todos os movimentos daquela fatura como pagos (is_paid=true).
 
-10g. **UPDATE_CREDIT_CARD** (Alterar configurações do cartão)
-   - **QUANDO USAR**: Quando o usuário quer mudar limite, dia de vencimento ou dia de fechamento de um cartão JÁ EXISTENTE.
-   - **Gatilhos**:
-     - "Alterar limite do Nubank para 5000"
-     - "Mudar vencimento do Itaú para dia 10"
-     - "Corrigir fechamento do cartão XP"
-     - "Meu limite aumentou para 8000"
-   - **SLOT-FILLING OBRIGATÓRIO**: Se o usuário mencionar que quer alterar algo, mas NÃO informar o valor, você DEVE perguntar!
-     - "Corrigir fechamento do Itaú" → Responda: "Qual o novo dia de fechamento do cartão Itaú?"
-     - "Mudar vencimento do Nubank" → Responda: "Qual o novo dia de vencimento?"
-     - "Alterar limite" → Responda: "Qual o novo limite?"
-     - Use \`update_type\` para indicar o que está sendo alterado: "closing_day", "due_day", ou "limit_amount"
-   - **Slots**:
-     - \`card_name\` (OBRIGATÓRIO - Nome do cartão).
-     - \`update_type\` ("closing_day" | "due_day" | "limit_amount" - indica o que será atualizado).
-     - \`limit_amount\` (Novo limite - use apenas se informado).
-     - \`due_day\` (Novo dia de vencimento - use apenas se informado).
-     - \`closing_day\` (Novo dia de fechamento - use apenas se informado).
-   - **Ação**: Atualiza as configurações do cartão no banco de dados.
-
 11. **CREATE_RECURRENCE** (Criar conta recorrente/mensal)
-   - **QUANDO USAR**: Quando o usuário menciona "TODO dia X", "toda semana", "mensal", "todo mês" E está criando uma NOVA recorrência.
-   - **PRIORIDADE CONTEXTUAL** (comportamento cultural brasileiro):
-     - "Spotify todo mês no Nubank" → Busca **cartão Nubank** primeiro (recorrências = cartão)
-     - "Spotify todo mês, débito automático no Nubank" → Busca **conta Nubank** (explícito)
-   - **DETECÇÃO AUTOMÁTICA DE DÉBITO AUTOMÁTICO**:
-     - Se a frase contém "débito automático", "DA", "debita automático", extraia: \`is_auto_debit: true\` e \`account_name\` (obrigatório para DA!).
-     - Exemplo: "Conta de luz vence todo dia 10, débito automático no Itaú" → \`is_auto_debit: true, account_name: "Itaú"\`
+   - **QUANDO USAR**: Quando o usuário menciona "TODO dia X", "toda semana", "mensal", "todo mês".
    - **Gatilhos**:
      - "Minha conta de X vence TODO dia Y"
      - "Pago X todo mês dia Y"
      - "Recebo salário todo dia Y"
      - "Conta de X é mensal, dia Y"
-     - "X todo dia Y, débito automático no Z" (extrai is_auto_debit + account_name!)
+     - "Netflix de X todo dia Y no Nubank"
    - **Exemplos**:
-     - "Conta de luz vence todo dia 10" → CREATE_RECURRENCE, description: "Conta de luz", due_day: 10, type: "expense", is_auto_debit: false
-     - "Minha conta de luz vence todo dia 11 com débito automático no Itaú" → CREATE_RECURRENCE, description: "Conta de luz", due_day: 11, is_auto_debit: true, account_name: "Itaú"
+     - "Conta de luz vence todo dia 10" → CREATE_RECURRENCE, description: "Conta de luz", due_day: 10, type: "expense"
      - "Recebo salário todo dia 5" → CREATE_RECURRENCE, description: "Salário", due_day: 5, type: "income"
      - "Aluguel de 1500 todo dia 10" → CREATE_RECURRENCE, description: "Aluguel", due_day: 10, amount: 1500, type: "expense"
-     - "Spotify de 21,90 todo mês no Nubank" → CREATE_RECURRENCE, description: "Spotify", amount: 21.90, account_name: "Nubank" (busca cartão primeiro!)
+     - "Spotify de 21,90 todo dia 5 no Nubank" → CREATE_RECURRENCE, description: "Spotify", due_day: 5, amount: 21.90, card_name: "Nubank"
    - **IMPORTANTE**: NÃO exija valor para recorrências. Se o usuário não mencionar, registre com \`amount: 0\`.
    - **Slots**:
      - \`description\`: Nome da conta (ex: "Conta de luz", "Aluguel", "Salário").
@@ -365,9 +336,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`amount\`: Valor (OPCIONAL - usar 0 se não informado).
      - \`type\`: 'income' | 'expense'.
      - \`frequency\`: 'monthly' (padrão) | 'weekly'.
-     - \`card_name\`: Nome do cartão (use também para extrair de account_name).
-     - \`account_name\`: Nome genérico (tenta cartão primeiro, depois conta - a menos que is_auto_debit=true).
-     - \`is_auto_debit\`: true se mencionou "débito automático", false caso contrário.
+     - \`card_name\`: Nome do cartão (OPCIONAL).
     - **Ação**: Cria uma recorrência que aparecerá no calendário todo mês.
 
 11. **DELETE_RECURRENCE** (Cancelar/excluir conta recorrente)
@@ -386,35 +355,23 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`search_term\`: Nome da recorrência a ser cancelada.
    - **Ação**: Busca e desativa a recorrência correspondente.
 
-11b. **LIST_RECURRENCES** (Listar contas fixas/recorrentes)
-   - **QUANDO USAR**: Quando o usuário quer ver suas contas fixas, assinaturas ou salários cadastrados.
+12. **SET_AUTO_DEBIT** (Criar/marcar débito automático) ⚠️ PRIORIDADE ALTA
+   - **QUANDO USAR**: Quando o usuário menciona "débito automático", "DA", "debita automático", ou diz que o banco paga sozinho.
    - **Gatilhos**:
-     - "Quais são minhas contas fixas?"
-     - "Listar recorrências"
-     - "O que tenho de conta todo mês?"
-     - "Ver minhas assinaturas"
-     - "Quais são meus gastos fixos?"
-   - **Ação**: Busca todas as recorrências ativas e lista para o usuário.
-
-12. **SET_AUTO_DEBIT** (Marcar recorrência EXISTENTE como débito automático) ⚠️ PRIORIDADE MÉDIA
-   - **QUANDO USAR**: Quando o usuário quer ATIVAR débito automático em uma conta recorrente que JÁ EXISTE.
-   - **DISTINÇÃO CRÍTICA**:
-     - "Conta de luz vence todo dia 10, débito automático" → **CREATE_RECURRENCE** (criando nova com DA)
-     - "Coloca a conta de água em débito automático no Bradesco" → **SET_AUTO_DEBIT** (ativando DA em existente)
-   - **Gatilhos**:
+     - "X é débito automático"
      - "Coloca X em débito automático"
-     - "Ativa débito automático da conta de X"
-     - "A conta de X agora é débito automático"
-     - "Transforma X em débito automático no Y" (banco)
+     - "débito automático"
+     - "X de Y reais dia Z, débito automático"
    - **Exemplos**:
-     - "Coloca a conta de água em débito automático no Bradesco" → SET_AUTO_DEBIT, search_term: "água", account_name: "Bradesco"
-     - "Ativa débito automático da internet" → SET_AUTO_DEBIT, search_term: "internet"
-     - "A conta de gás agora é débito automático" → SET_AUTO_DEBIT, search_term: "gás"
+     - "Conta de luz de 150 dia 10, débito automático" → SET_AUTO_DEBIT, search_term: "luz", amount: 150, due_day: 10
+     - "Condomínio de 800 reais, débito automático no Itaú" → SET_AUTO_DEBIT, search_term: "condomínio", amount: 800, account_name: "Itaú"
+     - "A conta de água é débito automático" → SET_AUTO_DEBIT, search_term: "água"
    - **Slots**:
-     - \`search_term\`: Nome da conta EXISTENTE (OBRIGATÓRIO).
-     - \`account_name\`: Banco do débito (OBRIGATÓRIO - se não informado, pergunte!)
-     - \`amount\`: Valor (OPCIONAL - se informado, atualiza também).
-   - **Ação**: Busca recorrência existente e atualiza: is_auto_debit = true + account_id.
+     - \`search_term\`: Nome da conta (OBRIGATÓRIO).
+     - \`amount\`: Valor (OPCIONAL - se não informado, é conta variável).
+     - \`due_day\`: Dia do vencimento (OPCIONAL se já existe recorrência).
+     - \`account_name\`: Banco do débito (OPCIONAL).
+   - **Ação**: Cria ou atualiza recorrência com is_auto_debit = true.
 
 13. **CHECK_AUTO_DEBIT** (Verificar se é débito automático)
    - **QUANDO USAR**: Quando o usuário pergunta se algo é débito automático.
@@ -474,14 +431,11 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
 16. **CREDIT_CARD_PURCHASE** (Compra no cartão de crédito) ⚠️ PRIORIDADE ALTA
    - **QUANDO USAR**: Quando o usuário menciona "no cartão", "no crédito", "cartão de crédito", ou menciona um nome de cartão específico (Nubank, Itaú, etc).
    - **IMPORTANTE**: Compras no cartão NÃO têm entrada e NÃO pedem data (a data é calculada automaticamente pelo fechamento/vencimento do cartão).
-   - **⚠️ HÍBRIDO (CARTÃO + ENTRADA)**: Se o usuário mencionar "cartão" E "entrada" juntos (ex: "10x no cartão com entrada"), USE CREDIT_CARD_PURCHASE com hasDownPayment: true. O sistema vai bloquear e explicar.
    - **SLOTS OBRIGATÓRIOS**: 
      1. \`description\` (O que comprou?)
      2. \`amount\` (Valor)
      3. \`installments\` (Quantas vezes? Use 1 se não mencionou parcelamento)
      4. \`card_name\` (OPCIONAL - nome do cartão. Se não especificado, usa o cartão principal)
-     5. \`hasDownPayment\` (OPCIONAL - true se mencionou "entrada" junto com cartão)
-     6. \`downPaymentValue\` (OPCIONAL - valor da entrada mencionada)
    - **Gatilhos**:
      - "Comprei X no cartão"
      - "Gastei X no crédito"
@@ -489,23 +443,11 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Comprei X em Yx no cartão"
      - "Comprei X no Nubank" (nome do cartão)
      - "X no crédito do Itaú"
-     - "Comprei X em Yx no cartão com entrada de Z" → hasDownPayment: true
-   - **⚠️ ASSINATURAS (RECORRÊNCIA)**:
-     - **PRIORIDADE MÁXIMA**: Se a frase começar com "Assinei" ou tiver "assinatura", É RECORRÊNCIA (CREATE_RECURRENCE), NUNCA compra única!
-     - **NO CARTÃO** ("assinei no cartão X", "netflix no crédito"):
-       - Use \`card_name\`.
-       - **NÃO** pergunte data (usa o fechamento do cartão).
-     - **NA CONTA** ("débito automático", "na conta X", "todo mês no pix"):
-       - Use \`account_name\`.
-       - **OBRIGATÓRIO**: Pergunte \`due_day\` (dia do vencimento).
-     - **Exemplo Cartão**: "Assinei Netflix no cartão Nubank" → CREATE_RECURRENCE (card_name="Nubank", due_day=null)
-     - **Exemplo Conta**: "Assinei Netflix no débito Nubank" → CREATE_RECURRENCE (account_name="Nubank", due_day=?) 
    - **Exemplos**:
      - "Comprei uma janta de 120 no cartão" → CREDIT_CARD_PURCHASE, description: "janta", amount: 120, installments: 1
      - "Gastei 500 no cartão em 5x" → CREDIT_CARD_PURCHASE, description: "compra", amount: 500, installments: 5
      - "Paguei o tênis de 350 no Nubank" → CREDIT_CARD_PURCHASE, description: "tênis", amount: 350, installments: 1, card_name: "Nubank"
      - "Comprei geladeira de 3000 em 10x no cartão" → CREDIT_CARD_PURCHASE, description: "geladeira", amount: 3000, installments: 10
-     - "Comprei TV de 2000 em 10x no cartão com entrada de 200" → CREDIT_CARD_PURCHASE, description: "TV", amount: 2000, installments: 10, hasDownPayment: true, downPaymentValue: 200
    - **NÃO PERGUNTE**:
      - Se teve entrada (cartão nunca tem)
      - Data de vencimento (é calculada automaticamente)
@@ -531,11 +473,10 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      6. \`installments\` (OPCIONAL - Se usuário já disser como vai pagar. Ex: "em 5x")
      7. \`installment_value\` (OPCIONAL - Valor da parcela)
      8. \`payment_due_day\` (OPCIONAL - Dia de vencimento das parcelas. Ex: "todo dia 10")
-   - **Gatilhos para 'taken'**: "peguei emprestado", "me emprestou", "devo X pra", "dívida com", "to devendo", "peguei X com", "peguei X do", "peguei X da", "emprestado do", "emprestado da"
-   - **Gatilhos para 'given'**: "emprestei", "me deve", "passei emprestado pra", "fulano me deve", "emprestei X pro", "emprestei X pra"
+   - **Gatilhos para 'taken'**: "peguei emprestado", "me emprestou", "devo X pra", "dívida com", "to devendo", "peguei X com"
+   - **Gatilhos para 'given'**: "emprestei", "me deve", "passei emprestado pra", "fulano me deve", "emprestei X pro"
    - **Exemplos**:
      - "Peguei 500 emprestado com o João" → CREATE_LOAN, amount: 500, description: "João", type: 'taken'
-     - "Peguei 1000 emprestado do João" → CREATE_LOAN, amount: 1000, description: "João", type: 'taken'
      - "Emprestei 200 pro Pedro" → CREATE_LOAN, amount: 200, description: "Pedro", type: 'given'
      - "Devo 1000 pro banco, vence dia 10" → CREATE_LOAN, amount: 1000, description: "banco", type: 'taken', due_date: "YYYY-MM-10"
      - "O João me deve 300" → CREATE_LOAN, amount: 300, description: "João", type: 'given'
@@ -546,21 +487,6 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - User: "500"
        AI: { intent: "CREATE_LOAN", data: { description: "João", amount: 500, type: "taken" }, message: "✅ Empréstimo registrado! R$500 pegos com João." }
    - **IMPORTANTE**: NÃO exija data de vencimento. Empréstimos sem data aparecerão como pendências em qualquer projeção futura.
-
-17b. **CHECK_LOAN** (Consultar saldo de empréstimo)
-   - **QUANDO USAR**: Quando o usuário quer saber quanto deve ou quanto tem a receber de um empréstimo específico.
-   - **Gatilhos**:
-     - "Quanto devo pro X?"
-     - "Quanto falta pagar pro X?"
-     - "Quanto o X me deve?"
-     - "Qual minha dívida com X?"
-   - **Slots**:
-     - \`search_term\` (OBRIGATÓRIO - Nome da pessoa/entidade. Ex: "João", "Banco X")
-   - **Exemplos**:
-     - "Quanto devo pro João?" → CHECK_LOAN, search_term: "João"
-     - "Quanto falta pagar pro banco?" → CHECK_LOAN, search_term: "banco"
-     - "Quanto a Maria me deve?" → CHECK_LOAN, search_term: "Maria"
-   - **Ação**: Busca o empréstimo pelo nome e retorna o saldo devedor.
 
 18. **LOAN_PAYMENT_PLAN** (Plano de pagamento de empréstimo)
    - **QUANDO USAR**: Quando o usuário informa como vai pagar ou receber um empréstimo.
@@ -718,23 +644,6 @@ Se no histórico recente você (IA) fez uma pergunta sobre parcelamento (entrada
   - **NÃO pergunte "do que se trata?" ou "qual a descrição?" - JÁ FOI DITO!**
 
 **REGRA DE OURO**: Se no CONTEXTO DA CONVERSA o usuário já mencionou O QUE foi (estante, cadeira, tênis, etc.), isso É a descrição. Use-a diretamente.
-
-**REGRA CRÍTICA PARA RECORRÊNCIAS** ⚠️:
-Se você fez uma pergunta sobre **DIA DE VENCIMENTO** de uma recorrência (ex: "Qual o dia do mês que vence a [nome]?"), e o usuário respondeu APENAS com um número (ex: "17", "5", "dia 10"), **esse número é o 'due_day', NÃO o 'amount'**:
-- Recupere TODOS os dados já fornecidos do histórico (description, amount, card_name, account_name, etc.).
-- Adicione o número como 'due_day' (não como 'amount'!).
-- Se ainda faltar algum slot, pergunte APENAS o que falta.
-- **NÃO confunda resposta de data com valor monetário!**
-
-**EXEMPLO CORRETO (Recorrência):**
-1. User: "Assinei Spotify de 21,90 na conta Itaú"
-   AI: { intent: "CONFIRMATION_REQUIRED", message: "Certo! Assinatura de Spotify de R$21,90 na conta Itaú. Qual o dia de vencimento todo mês?", data: { description: "Spotify", amount: 21.90, account_name: "Itaú" } }
-2. User: "17"
-   **CORRETO**: AI interpreta como due_day=17 (não amount=17!) e usa os dados anteriores:
-   AI: { intent: "CREATE_RECURRENCE", data: { description: "Spotify", amount: 21.90, due_day: 17, account_name: "Itaú", type: "expense" }, message: "✅ Anotado! Despesa de R$ 21,90 com Spotify." }
-   **ERRADO**: Registrar como "Despesa de R$ 17,00 com Spotify" ❌
-
-
 
 ### INTERPRETAÇÃO DE DATAS:
 - "hoje" → data atual (fornecida abaixo)
@@ -929,7 +838,7 @@ export async function processCommand(input: string, history: string[] = [], inpu
           // Extract key info from that message
           const msgContent = prevUserMsg.replace('Usuário:', '').trim();
           // Add explicit context to the input
-          enrichedInput = `${msgContent}, valor ${input}`;
+          enrichedInput = `O valor é ${input}. (CONTEXTO: o usuário disse antes "${msgContent}" - USE ESSA INFORMAÇÃO COMO DESCRIÇÃO, NÃO PERGUNTE NOVAMENTE!)`;
         }
       }
 
@@ -1186,21 +1095,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
         finalMessage = `${prefix}${parsedResponse.message}${accountSuffix}`;
         hitMilestone = result.hitMilestone || false;
 
-        // Advisor Reaction Hook (Empathy/Celebration)
-        try {
-          const { getAdvisorReaction } = await import('./advisor-reaction');
-          const advisorReaction = await getAdvisorReaction(
-            { description: d.description, amount: d.amount, type: movementType },
-            d.category || ''
-          );
-          if (advisorReaction) {
-            finalMessage += `\n\n${advisorReaction}`;
-          }
-        } catch (e) {
-          // Falha silenciosa - não travar o chat por causa do Advisor
-          console.error('Advisor reaction error:', e);
-        }
-
         // Handle compound commands: if there's a pending query, execute it and append
         if (d.also_query === 'GET_FINANCIAL_STATUS') {
           const status = await getFinancialStatus();
@@ -1233,18 +1127,67 @@ export async function processCommand(input: string, history: string[] = [], inpu
 
   if (parsedResponse.intent === 'ADJUST_BALANCE') {
     const d = parsedResponse.data;
-    if (d.amount && d.amount > 0) {
-      // Update wallet balance directly
-      const result = await setWalletInitialBalance(d.amount);
+    if (d.amount || d.amount === 0) {
+      const { adjustAccountBalance } = await import('./financial');
+      const { getAccountByName, getDefaultAccount } = await import('./assets');
 
-      if (result.success) {
-        const formatted = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        finalMessage = `✅ Saldo da Carteira ajustado para ${formatted}!`;
+      let accountId = undefined;
+      let accountName = d.account_name;
+
+      // 1. Identify Account
+      if (accountName) {
+        const account = await getAccountByName(accountName);
+        if (account) {
+          accountId = account.id;
+          accountName = account.name; // Use canonical name
+        } else {
+          finalMessage = `❌ Conta "${accountName}" não encontrada.`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
       } else {
-        finalMessage = `❌ Erro ao ajustar saldo: ${result.error}`;
+        // No account specified - try default
+        const defaultAccount = await getDefaultAccount();
+        if (defaultAccount) {
+          accountId = defaultAccount.id;
+          accountName = defaultAccount.name;
+        } else {
+          // No default account - ask user
+          finalMessage = `❓ Qual conta você quer ajustar? (ex: "Meu saldo no Nubank é ${d.amount}")`;
+          return {
+            intent: 'CONFIRMATION_REQUIRED' as IntentType,
+            data: { ...d, askingForAccount: true },
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
+
+      // 2. Perform Adjustment
+      if (accountId) {
+        const result = await adjustAccountBalance(accountId, d.amount);
+
+        if (result.success) {
+          const formattedBalance = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const diff = result.adjustmentAmount || 0;
+          const formattedDiff = Math.abs(diff).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          let diffText = '';
+          if (diff > 0) diffText = ` (encontrei +${formattedDiff})`;
+          else if (diff < 0) diffText = ` (ajuste de -${formattedDiff})`;
+          else diffText = ` (sem alterações)`;
+
+          finalMessage = `✅ Saldo do **${result.accountName}** ajustado para ${formattedBalance}${diffText}!`;
+        } else {
+          finalMessage = `❌ Erro ao ajustar saldo: ${result.error}`;
+        }
       }
     } else {
-      finalMessage = `❌ Não entendi o valor. Tente: "Corrija meu saldo inicial pra R$ 3500"`;
+      finalMessage = `❌ Não entendi o valor. Tente: "Meu saldo no Nubank é 500"`;
     }
   }
 
@@ -1386,28 +1329,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
     }
   }
 
-  // Handle LIST_ACCOUNTS intent
-  if (parsedResponse.intent === 'LIST_ACCOUNTS') {
-    const { getAccounts } = await import('./assets');
-    const accounts = await getAccounts();
-
-    if (accounts && accounts.length > 0) {
-      let totalBalance = 0;
-      const accountLines = accounts.map((acc: any) => {
-        totalBalance += acc.balance || 0;
-        const formattedBalance = (acc.balance || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const defaultBadge = acc.is_default ? ' ⭐' : '';
-        const typeLabel = acc.type === 'wallet' ? '💵' : acc.type === 'savings' ? '🏦' : '🏛️';
-        return `${typeLabel} **${acc.name}**${defaultBadge}: ${formattedBalance}`;
-      });
-
-      const totalFormatted = totalBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      finalMessage = `📋 **Suas Contas:**\n\n${accountLines.join('\n')}\n\n💰 **Total:** ${totalFormatted}`;
-    } else {
-      finalMessage = `📋 Você ainda não tem contas cadastradas. Diga "Criar conta no Nubank" para começar!`;
-    }
-  }
-
   // Handle RECONCILE_PAYMENT - mark pending movement as paid (with optional amount update)
   if (parsedResponse.intent === 'RECONCILE_PAYMENT') {
     const d = parsedResponse.data;
@@ -1535,53 +1456,116 @@ export async function processCommand(input: string, history: string[] = [], inpu
   }
 
 
+  // Handle CREATE_RECURRENCE - create a recurring bill/income
+  if (parsedResponse.intent === 'CREATE_RECURRENCE') {
+    const d = parsedResponse.data;
+    if (d.description && d.due_day) {
+      const { createRecurrence } = await import('./financial');
+      const { getCardByName, getAccountByName } = await import('./assets');
 
+      let cardId: string | undefined = undefined;
+      let accountId: string | undefined = undefined;
+      let locationName = '';
 
-  // Handle LIST_RECURRENCES - list all active recurrences
-  if (parsedResponse.intent === 'LIST_RECURRENCES') {
-    const { getRecurrences } = await import('./financial');
-    const recurrences = await getRecurrences();
-
-    if (recurrences && recurrences.length > 0) {
-      const incomes = recurrences.filter((r: any) => r.type === 'income');
-      const expenses = recurrences.filter((r: any) => r.type === 'expense');
-
-      let message = '';
-
-      if (incomes.length > 0) {
-        message += `💰 **Receitas Fixas:**\n`;
-        incomes.forEach((r: any) => {
-          const formattedAmount = r.variable_amount
-            ? 'Valor variável'
-            : r.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-          const date = new Date(r.next_due_date);
-          const day = date.getDate() + 1; // Fix timezone offset roughly
-          message += `• **${r.description}**: ${formattedAmount} (dia ${day})\n`;
-        });
-        message += '\n';
+      // Check for Credit Card
+      if (d.card_name) {
+        const card = await getCardByName(d.card_name);
+        if (card) {
+          cardId = card.id;
+          locationName = ` no cartão ${card.name}`;
+        } else {
+          finalMessage = `❌ Não encontrei o cartão "${d.card_name}".`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
+      }
+      // Check for Bank Account (only if not card)
+      else if (d.account_name) {
+        const account = await getAccountByName(d.account_name);
+        if (account) {
+          accountId = account.id;
+          locationName = ` na conta ${account.name}`;
+        } else {
+          finalMessage = `❌ Não encontrei a conta "${d.account_name}".`;
+          return {
+            intent: parsedResponse.intent as IntentType,
+            data: parsedResponse.data,
+            message: finalMessage,
+            confidence: 0.9
+          };
+        }
       }
 
-      if (expenses.length > 0) {
-        message += `💸 **Despesas Fixas:**\n`;
-        expenses.forEach((r: any) => {
-          const formattedAmount = r.variable_amount
-            ? 'Valor variável'
-            : r.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      // Calculate next due date
+      const now = new Date();
+      const currentDay = now.getDate();
+      let nextDueDate: Date;
+      let displayDayLabel: string;
 
-          // Parse date manually to avoid timezone issues
-          const [year, month, day] = r.next_due_date.split('-');
+      if (cardId) {
+        // For credit card recurrences: use the card's due date
+        // Get the card to know its due_day
+        const { getCreditCards } = await import('./assets');
+        const cards = await getCreditCards();
+        const card = cards.find(c => c.id === cardId);
 
-          let details = '';
-          if (r.is_auto_debit) details = ' (Débito Automático)';
-          else if (r.account_name) details = ` (${r.account_name})`;
+        if (card) {
+          // Calculate next invoice due date (same logic as getInvoiceDetails)
+          let targetMonth = now.getMonth() + 1;
+          let targetYear = now.getFullYear();
 
-          message += `• **${r.description}**: ${formattedAmount} (dia ${day})${details}\n`;
-        });
+          // If we're past the due date, use next month
+          if (currentDay > card.due_day) {
+            targetMonth = targetMonth + 1;
+            if (targetMonth > 12) {
+              targetMonth = 1;
+              targetYear = targetYear + 1;
+            }
+          }
+
+          nextDueDate = new Date(targetYear, targetMonth - 1, card.due_day);
+          displayDayLabel = `vencimento dia ${card.due_day}`;
+        } else {
+          // Fallback if card not found
+          nextDueDate = new Date(now.getFullYear(), now.getMonth() + 1, 17);
+          displayDayLabel = `todo mês`;
+        }
+      } else {
+        // For regular recurrences: use the day specified by user
+        if (d.due_day > currentDay) {
+          nextDueDate = new Date(now.getFullYear(), now.getMonth(), d.due_day);
+        } else {
+          nextDueDate = new Date(now.getFullYear(), now.getMonth() + 1, d.due_day);
+        }
+        displayDayLabel = `todo dia ${d.due_day}`;
       }
 
-      finalMessage = `📋 **Suas Contas Recorrentes:**\n\n${message}`;
+      const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+
+      try {
+        await createRecurrence({
+          description: d.description,
+          amount: d.amount || 0,
+          type: d.type || 'expense',
+          frequency: d.frequency || 'monthly',
+          next_due_date: nextDueDateStr,
+          card_id: cardId,
+          account_id: accountId
+        });
+
+        const typeLabel = d.type === 'income' ? 'recebimento' : 'conta';
+        const amountText = d.amount ? ` de R$ ${d.amount.toLocaleString('pt-BR')}` : '';
+
+        finalMessage = `✅ Conta recorrente criada! \"${d.description}\"${amountText}${locationName}, ${displayDayLabel}.`;
+      } catch (e: any) {
+        finalMessage = `❌ Erro ao criar recorrência: ${e.message}`;
+      }
     } else {
-      finalMessage = `📋 Você não tem nenhuma conta fixa ou recorrência cadastrada.`;
+      finalMessage = `❌ Não entendi. Tente: \"Conta de luz vence todo dia 10\".`;
     }
   }
 
@@ -1781,175 +1765,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
     }
   }
 
-  // Handle CREATE_RECURRENCE - create recurring expense/income (on account or card)
-  if (parsedResponse.intent === 'CREATE_RECURRENCE') {
-    const d = parsedResponse.data;
-
-    // Validate required fields
-    if (!d.description) {
-      finalMessage = `❓ Qual é a conta recorrente? (ex: Netflix, Spotify, Aluguel)`;
-    } else if (!d.card_name && !d.due_day) {
-      // Only ask for due_day if NOT a card subscription (cards use their own due_day)
-      finalMessage = `❓ Qual o dia do mês que vence a ${d.description}?`;
-    } else {
-      const { createRecurrence } = await import('./financial');
-      const { getDefaultAccount, getAccountByName, getCardByName } = await import('./assets');
-
-      try {
-        let accountId: string | undefined;
-        let cardId: string | undefined;
-
-        let dueDay: number;
-        let cardName: string | undefined;
-        let accountName: string | undefined;
-        let card: any = null;
-
-        // CONTEXT-BASED PRIORITY FOR RECURRENCES:
-        // - If "débito automático" mentioned → account_name (explicit)
-        // - Otherwise, try CARD first (recurrences culturally = credit card)
-        // - Example: "Spotify todo mês no Nubank" → tries Nubank card first
-
-        if (d.is_auto_debit && d.account_name) {
-          // Explicit auto-debit: MUST be account
-          const account = await getAccountByName(d.account_name);
-          if (account) {
-            accountId = account.id;
-            accountName = account.name;
-          }
-          dueDay = parseInt(d.due_day);
-        } else if (d.card_name) {
-          // Explicit card mention OR ambiguous name (try card first for recurrences)
-          card = await getCardByName(d.card_name);
-          if (card) {
-            cardId = card.id;
-            cardName = card.name;
-            dueDay = card.due_day; // Use card's due_day
-          } else {
-            // Card not found, check if it's actually an account name
-            if (d.account_name) {
-              const account = await getAccountByName(d.account_name);
-              if (account) {
-                accountId = account.id;
-                accountName = account.name;
-              }
-            }
-            if (!accountId) {
-              finalMessage = `❌ Não encontrei o cartão "${d.card_name}". Você já cadastrou ele?`;
-              return {
-                intent: parsedResponse.intent as IntentType,
-                data: parsedResponse.data,
-                message: finalMessage,
-                confidence: 0.9
-              };
-            }
-            dueDay = parseInt(d.due_day);
-          }
-        } else if (d.account_name) {
-          // Try card first (priority for recurrences), then fallback to account
-          const possibleCard = await getCardByName(d.account_name);
-          if (possibleCard) {
-            cardId = possibleCard.id;
-            cardName = possibleCard.name;
-            dueDay = possibleCard.due_day;
-          } else {
-            // Not a card, must be account
-            const account = await getAccountByName(d.account_name);
-            if (account) {
-              accountId = account.id;
-              accountName = account.name;
-            }
-            dueDay = parseInt(d.due_day);
-          }
-        } else {
-          // No card or account mentioned
-          dueDay = parseInt(d.due_day);
-        }
-
-        // Calculate next due date
-        const today = new Date();
-        let nextDueDate: Date;
-
-        if (cardId && card) {
-          // Credit Card Logic: Check closing day
-          let targetMonth = today.getMonth();
-          let targetYear = today.getFullYear();
-
-          // If purchase is after closing day, it goes to next month's invoice
-          if (today.getDate() > card.closing_day) {
-            targetMonth++;
-          }
-
-          // Adjust year if needed
-          if (targetMonth > 11) {
-            targetMonth = 0;
-            targetYear++;
-          }
-
-          // Determine due date based on due_day vs closing_day relationship
-          // If due_day < closing_day, the due date is in the month FOLLOWING the invoice month
-          // Example: Closes 25/Jan, Due 05/Feb.
-          // If today is 26/Jan (after close), targetMonth becomes Feb. Due date is 05/Mar.
-          let dueMonth = targetMonth;
-          let dueYear = targetYear;
-
-          if (card.due_day < card.closing_day) {
-            dueMonth++;
-            if (dueMonth > 11) {
-              dueMonth = 0;
-              dueYear++;
-            }
-          }
-
-          nextDueDate = new Date(dueYear, dueMonth, card.due_day);
-        } else {
-          // Regular Account Logic
-          if (dueDay >= today.getDate()) {
-            nextDueDate = new Date(today.getFullYear(), today.getMonth(), dueDay);
-          } else {
-            nextDueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay);
-          }
-        }
-        const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
-
-        const recurrence = await createRecurrence({
-          description: d.description,
-          amount: d.amount || 0,
-          type: d.type || 'expense',
-          frequency: d.frequency || 'monthly',
-          next_due_date: nextDueDateStr,
-          account_id: accountId,
-          card_id: cardId,
-          is_auto_debit: d.is_auto_debit || false,
-          variable_amount: !d.amount
-        });
-
-        if (recurrence) {
-          const amountText = d.amount
-            ? ` de R$ ${d.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-            : ' (valor variável)';
-          const locationText = cardId
-            ? ` no **${cardName}**`
-            : '';
-          const scheduleText = cardId
-            ? '🔄 Cobrança mensal (vence junto com a fatura)'
-            : `🗓️ Todo dia ${dueDay}`;
-
-          // Add auto-debit info if applicable
-          const autoDebitText = (d.is_auto_debit && accountId)
-            ? `\n💳 Débito automático no **${accountName}**`
-            : '';
-
-          finalMessage = `✅ Recorrência criada!\n\n📅 **${d.description}**${amountText}${locationText}\n${scheduleText}${autoDebitText}`;
-        } else {
-          finalMessage = `❌ Erro ao criar recorrência.`;
-        }
-      } catch (error) {
-        console.error('[CREATE_RECURRENCE] Error:', error);
-        finalMessage = `❌ Erro ao criar recorrência: ${error}`;
-      }
-    }
-  }
-
   // Handle CREATE_LOAN - register loan (taken or given)
   if (parsedResponse.intent === 'CREATE_LOAN') {
     const d = parsedResponse.data;
@@ -2004,8 +1819,8 @@ export async function processCommand(input: string, history: string[] = [], inpu
           accountId: accountId,
           isPaid: true,
           isLoan: true,  // IMPORTANT: Mark as loan so it's excluded from real income/expense
-          loanDescription: d.description  // Required by finance-core validation
-          // loanId intentionally omitted - it causes remaining_amount to be updated again
+          loanId: loanResult.data?.id, // Link the movement to the loan!
+          skipLoanUpdate: true // IMPORTANT: Don't update remaining_amount again (it was just created)
         });
 
         // 3. Format success message
@@ -2068,44 +1883,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
           confidence: 1.0
         };
       }
-    }
-  }
-
-  // Handle CHECK_LOAN - check loan balance
-  if (parsedResponse.intent === 'CHECK_LOAN') {
-    const d = parsedResponse.data;
-    if (d.search_term) {
-      const { getLoans } = await import('./loans');
-      const loans = await getLoans();
-
-      // Search for loan by description (case-insensitive partial match)
-      const searchLower = d.search_term.toLowerCase();
-      const matchingLoan = loans.find((loan: any) =>
-        loan.description.toLowerCase().includes(searchLower)
-      );
-
-      if (matchingLoan) {
-        const formattedRemaining = matchingLoan.remaining_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const formattedTotal = matchingLoan.total_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-        if (matchingLoan.remaining_amount === 0) {
-          if (matchingLoan.type === 'taken') {
-            finalMessage = `🎉 Sua dívida com **${matchingLoan.description}** está quitada!`;
-          } else {
-            finalMessage = `🎉 **${matchingLoan.description}** já pagou tudo que devia!`;
-          }
-        } else {
-          if (matchingLoan.type === 'taken') {
-            finalMessage = `💳 **Empréstimo de ${matchingLoan.description}**\n\n• Valor total: ${formattedTotal}\n• Falta pagar: ${formattedRemaining}`;
-          } else {
-            finalMessage = `💰 **Empréstimo para ${matchingLoan.description}**\n\n• Valor total: ${formattedTotal}\n• Falta receber: ${formattedRemaining}`;
-          }
-        }
-      } else {
-        finalMessage = `❌ Não encontrei empréstimo com "${d.search_term}".`;
-      }
-    } else {
-      finalMessage = `❓ Com quem você quer consultar o empréstimo?`;
     }
   }
 
@@ -2737,28 +2514,12 @@ export async function processCommand(input: string, history: string[] = [], inpu
       finalMessage = `📊 Não foi possível gerar a previsão. Verifique se você tem contas ou receitas cadastradas.`;
     } else {
       // If user asked about specific month
-      if (d.target_month !== undefined && d.target_month !== null) {
+      if (d.target_month) {
         const monthMap: { [key: string]: number } = {
           'janeiro': 0, 'fevereiro': 1, 'março': 2, 'abril': 3, 'maio': 4, 'junho': 5,
           'julho': 6, 'agosto': 7, 'setembro': 8, 'outubro': 9, 'novembro': 10, 'dezembro': 11
         };
-
-        let targetMonthNum: number | undefined;
-
-        // Handle different types of target_month
-        if (typeof d.target_month === 'number') {
-          // AI returned month as number (1-12 or 0-11)
-          targetMonthNum = d.target_month > 12 ? d.target_month : d.target_month - 1; // Assume 1-indexed
-        } else if (typeof d.target_month === 'string') {
-          const monthLower = d.target_month.toLowerCase();
-          // Check for relative expressions
-          if (monthLower.includes('próximo') || monthLower.includes('que vem')) {
-            const now = new Date();
-            targetMonthNum = (now.getMonth() + 1) % 12;
-          } else {
-            targetMonthNum = monthMap[monthLower];
-          }
-        }
+        const targetMonthNum = monthMap[d.target_month.toLowerCase()];
 
         if (targetMonthNum !== undefined) {
           const targetForecast = forecasts.find(f => {
@@ -3105,67 +2866,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
     }
   }
 
-  // Handle UPDATE_CREDIT_CARD - Update card details
-  if (parsedResponse.intent === 'UPDATE_CREDIT_CARD') {
-    const d = parsedResponse.data;
-    const { updateCreditCard, getCardByName, getCreditCards } = await import('./assets');
-
-    let card = null;
-    if (d.card_name) {
-      card = await getCardByName(d.card_name);
-    }
-
-    // If card not found by name, but user has only one card, use it
-    if (!card) {
-      const allCards = await getCreditCards();
-      if (allCards.length === 1) {
-        card = allCards[0];
-      }
-    }
-
-    if (!card) {
-      finalMessage = d.card_name
-        ? `❌ Não encontrei o cartão "${d.card_name}".`
-        : `❓ Qual cartão você quer alterar?`;
-    } else {
-      try {
-        const updates: any = {};
-        const changes: string[] = [];
-
-        if (d.limit_amount) {
-          updates.limit_amount = d.limit_amount;
-          changes.push(`Limite: ${d.limit_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
-        }
-        if (d.due_day) {
-          updates.due_day = d.due_day;
-          changes.push(`Vencimento: dia ${d.due_day}`);
-        }
-        if (d.closing_day) {
-          updates.closing_day = d.closing_day;
-          changes.push(`Fechamento: dia ${d.closing_day}`);
-        }
-
-        if (Object.keys(updates).length === 0) {
-          // Check if user mentioned what they want to update but not the value
-          if (d.update_type === 'closing_day') {
-            finalMessage = `❓ Qual o novo dia de **fechamento** do cartão ${card.name}?`;
-          } else if (d.update_type === 'due_day') {
-            finalMessage = `❓ Qual o novo dia de **vencimento** do cartão ${card.name}?`;
-          } else if (d.update_type === 'limit_amount') {
-            finalMessage = `❓ Qual o novo **limite** do cartão ${card.name}?`;
-          } else {
-            finalMessage = `❓ O que você quer alterar no cartão **${card.name}**? (Limite, vencimento ou fechamento)`;
-          }
-        } else {
-          await updateCreditCard(card.id, updates);
-          finalMessage = `✅ Cartão **${card.name}** atualizado!\n\n${changes.map(c => `• ${c}`).join('\n')}`;
-        }
-      } catch (e) {
-        finalMessage = `❌ Erro ao atualizar cartão: ${e}`;
-      }
-    }
-  }
-
   // 3. Generate Audio
   let audioData: string | undefined = undefined;
   if (inputType === 'voice' && parsedResponse.spokenMessage && openai) {
@@ -3197,4 +2897,3 @@ export async function processCommand(input: string, history: string[] = [], inpu
     hitMilestone
   };
 }
-

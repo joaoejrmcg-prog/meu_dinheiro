@@ -1,11 +1,5 @@
 {
     "framework": "nextjs",
     "buildCommand": "next build",
-    "installCommand": "npm install",
-    "crons": [
-        {
-            "path": "/api/advisor/briefing",
-            "schedule": "0 9 * * 0"
-        }
-    ]
+    "installCommand": "npm install"
 }

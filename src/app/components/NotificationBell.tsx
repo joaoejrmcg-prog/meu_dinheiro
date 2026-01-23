@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bell, X, Trash2, CheckCircle, AlertTriangle, Info, XCircle, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, X, Trash2, CheckCircle, AlertTriangle, Info, XCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import ReactMarkdown from 'react-markdown';
 
 type Notification = {
     id: string;
@@ -12,26 +11,10 @@ type Notification = {
     type: 'info' | 'warning' | 'error' | 'success';
     read: boolean;
     created_at: string;
-    source: 'system';
-};
-
-type AdvisorNotification = {
-    id: string;
-    title: string;
-    content_markdown: string;
-    type: 'weekly_briefing' | 'budget_alert' | 'insight';
-    priority: 'normal' | 'high';
-    read_at: string | null;
-    created_at: string;
-    source: 'advisor';
-};
-
-type UnifiedNotification = (Notification | (Omit<AdvisorNotification, 'read_at'> & { read: boolean; message: string })) & {
-    expanded?: boolean;
 };
 
 export default function NotificationBell() {
-    const [notifications, setNotifications] = useState<UnifiedNotification[]>([]);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -40,52 +23,25 @@ export default function NotificationBell() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            // Fetch System Notifications
-            const { data: systemData, error: systemError } = await supabase
+            const { data, error } = await supabase
                 .from('notifications')
                 .select('*')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(20);
 
-            // Fetch Advisor Notifications
-            const { data: advisorData, error: advisorError } = await supabase
-                .from('advisor_notifications')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(20);
-
-            if (systemError && systemError.code !== '42P01') console.error('Error fetching system notifications:', systemError);
-            if (advisorError && advisorError.code !== '42P01') console.error('Error fetching advisor notifications:', advisorError);
-
-            const formattedSystem: UnifiedNotification[] = (systemData || []).map((n: any) => ({
-                ...n,
-                source: 'system'
-            }));
-
-            const formattedAdvisor: UnifiedNotification[] = (advisorData || []).map((n: any) => ({
-                id: n.id,
-                title: n.title,
-                message: n.content_markdown, // Use markdown as message for preview
-                content_markdown: n.content_markdown,
-                type: n.type, // Keep original type
-                priority: n.priority,
-                read: !!n.read_at,
-                created_at: n.created_at,
-                source: 'advisor',
-                expanded: false
-            }));
-
-            // Merge and Sort
-            const merged = [...formattedSystem, ...formattedAdvisor].sort((a, b) =>
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-            );
-
-            setNotifications(merged);
-
+            // Silently fail if table doesn't exist (42P01)
+            if (error?.code === '42P01') {
+                setNotifications([]);
+                return;
+            }
+            if (error) throw error;
+            setNotifications(data || []);
         } catch (error: any) {
-            console.error('Error fetching notifications:', error);
+            // Only log if not a "relation does not exist" error
+            if (error?.code !== '42P01') {
+                console.error('Error fetching notifications:', error);
+            }
         } finally {
             setLoading(false);
         }
@@ -95,47 +51,20 @@ export default function NotificationBell() {
     useEffect(() => {
         fetchNotifications();
 
-        // Subscribe to System Notifications
-        const systemChannel = supabase
-            .channel('notifications_system')
+        // Set up real-time subscription
+        const channel = supabase
+            .channel('notifications')
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
                 table: 'notifications'
             }, (payload) => {
-                const newNotif = { ...payload.new, source: 'system' } as UnifiedNotification;
-                setNotifications(prev => [newNotif, ...prev]);
-            })
-            .subscribe();
-
-        // Subscribe to Advisor Notifications
-        const advisorChannel = supabase
-            .channel('notifications_advisor')
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'advisor_notifications'
-            }, (payload) => {
-                const n = payload.new as any;
-                const newNotif: UnifiedNotification = {
-                    id: n.id,
-                    title: n.title,
-                    message: n.content_markdown,
-                    content_markdown: n.content_markdown,
-                    type: n.type,
-                    priority: n.priority,
-                    read: !!n.read_at,
-                    created_at: n.created_at,
-                    source: 'advisor',
-                    expanded: false
-                };
-                setNotifications(prev => [newNotif, ...prev]);
+                setNotifications(prev => [payload.new as Notification, ...prev]);
             })
             .subscribe();
 
         return () => {
-            supabase.removeChannel(systemChannel);
-            supabase.removeChannel(advisorChannel);
+            supabase.removeChannel(channel);
         };
     }, [fetchNotifications]);
 
@@ -144,10 +73,10 @@ export default function NotificationBell() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            await Promise.all([
-                supabase.from('notifications').delete().eq('user_id', user.id),
-                supabase.from('advisor_notifications').delete().eq('user_id', user.id)
-            ]);
+            await supabase
+                .from('notifications')
+                .delete()
+                .eq('user_id', user.id);
 
             setNotifications([]);
         } catch (error) {
@@ -155,10 +84,13 @@ export default function NotificationBell() {
         }
     };
 
-    const handleDelete = async (id: string, source: 'system' | 'advisor') => {
+    const handleDelete = async (id: string) => {
         try {
-            const table = source === 'advisor' ? 'advisor_notifications' : 'notifications';
-            await supabase.from(table).delete().eq('id', id);
+            await supabase
+                .from('notifications')
+                .delete()
+                .eq('id', id);
+
             setNotifications(prev => prev.filter(n => n.id !== id));
         } catch (error) {
             console.error('Error deleting notification:', error);
@@ -170,32 +102,23 @@ export default function NotificationBell() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            const unreadSystem = notifications.filter(n => !n.read && n.source === 'system');
-            const unreadAdvisor = notifications.filter(n => !n.read && n.source === 'advisor');
+            const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+            if (unreadIds.length === 0) return;
 
-            if (unreadSystem.length > 0) {
-                await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false);
-            }
+            await supabase
+                .from('notifications')
+                .update({ read: true })
+                .eq('user_id', user.id)
+                .eq('read', false);
 
-            if (unreadAdvisor.length > 0) {
-                await supabase.from('advisor_notifications').update({ read_at: new Date().toISOString() }).eq('user_id', user.id).is('read_at', null);
-            }
-
+            // Update local state
             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
         } catch (error) {
             console.error('Error marking notifications as read:', error);
         }
     };
 
-    const toggleExpand = (id: string) => {
-        setNotifications(prev => prev.map(n =>
-            n.id === id ? { ...n, expanded: !n.expanded } : n
-        ));
-    };
-
-    const getIcon = (type: string, source: string) => {
-        if (source === 'advisor') return <Sparkles className="w-5 h-5 text-purple-400" />;
-
+    const getIcon = (type: string) => {
         switch (type) {
             case 'success': return <CheckCircle className="w-5 h-5 text-green-400" />;
             case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-400" />;
@@ -204,9 +127,7 @@ export default function NotificationBell() {
         }
     };
 
-    const getBgColor = (type: string, source: string) => {
-        if (source === 'advisor') return 'bg-purple-500/10 border-purple-500/20';
-
+    const getBgColor = (type: string) => {
         switch (type) {
             case 'success': return 'bg-green-500/10 border-green-500/20';
             case 'warning': return 'bg-yellow-500/10 border-yellow-500/20';
@@ -284,53 +205,25 @@ export default function NotificationBell() {
                                 notifications.map(notification => (
                                     <div
                                         key={notification.id}
-                                        className={`${getBgColor(notification.type, notification.source)} border rounded-xl p-4 relative group transition-all duration-300`}
+                                        className={`${getBgColor(notification.type)} border rounded-xl p-4 relative group`}
                                     >
                                         <button
-                                            onClick={() => handleDelete(notification.id, notification.source as any)}
+                                            onClick={() => handleDelete(notification.id)}
                                             className="absolute top-2 right-2 p-1 text-neutral-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
                                         <div className="flex gap-3">
                                             <div className="flex-shrink-0 mt-0.5">
-                                                {getIcon(notification.type, notification.source)}
+                                                {getIcon(notification.type)}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-start pr-6">
-                                                    <p className="font-medium text-neutral-100 text-sm">
-                                                        {notification.title}
-                                                    </p>
-                                                </div>
-
-                                                {notification.source === 'advisor' ? (
-                                                    <div className="mt-2">
-                                                        {notification.expanded ? (
-                                                            <div className="text-neutral-300 text-sm prose prose-invert prose-sm max-w-none">
-                                                                <ReactMarkdown>{notification.content_markdown || notification.message}</ReactMarkdown>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="text-neutral-400 text-sm line-clamp-2">
-                                                                {notification.message}
-                                                            </p>
-                                                        )}
-                                                        <button
-                                                            onClick={() => toggleExpand(notification.id)}
-                                                            className="flex items-center gap-1 text-xs text-purple-400 mt-2 hover:text-purple-300 transition-colors"
-                                                        >
-                                                            {notification.expanded ? (
-                                                                <>Ver menos <ChevronUp className="w-3 h-3" /></>
-                                                            ) : (
-                                                                <>Ler análise completa <ChevronDown className="w-3 h-3" /></>
-                                                            )}
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-neutral-400 text-sm mt-1">
-                                                        {notification.message}
-                                                    </p>
-                                                )}
-
+                                                <p className="font-medium text-neutral-100 text-sm">
+                                                    {notification.title}
+                                                </p>
+                                                <p className="text-neutral-400 text-sm mt-1">
+                                                    {notification.message}
+                                                </p>
                                                 <p className="text-neutral-600 text-xs mt-2">
                                                     {new Date(notification.created_at).toLocaleDateString('pt-BR', {
                                                         day: 'numeric',

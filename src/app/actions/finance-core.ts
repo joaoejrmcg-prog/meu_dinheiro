@@ -36,11 +36,13 @@ interface CreateMovementParams {
     isPaid?: boolean;  // Whether it's already paid (default: true for immediate, false for future)
 
     // Flags
+    // Flags
     isLoan?: boolean;
     loanId?: string; // If linking to existing loan
     loanDescription?: string; // If creating new loan
     loanTotal?: number; // If creating new loan
     loanType?: LoanType;
+    skipLoanUpdate?: boolean; // NEW: Skip updating loan balance (useful for initial movement)
 
     isReserve?: boolean;
     reserveId?: string;
@@ -57,7 +59,7 @@ export async function createMovement(params: CreateMovementParams) {
     const {
         description, amount, type, date, accountId, cardId, categoryId,
         dueDate, isPaid,
-        isLoan, loanId, loanDescription, loanTotal, loanType,
+        isLoan, loanId, loanDescription, loanTotal, loanType, skipLoanUpdate,
         isReserve, reserveId,
         isReimbursement
     } = params;
@@ -104,7 +106,7 @@ export async function createMovement(params: CreateMovementParams) {
         let finalLoanId = loanId;
 
         // A. Handle Loan Creation/Update
-        if (isLoan) {
+        if (isLoan && !skipLoanUpdate) {
             if (!finalLoanId && loanDescription && loanTotal && loanType) {
                 // Create new Loan
                 const { data: newLoan, error: loanError } = await supabase
@@ -234,10 +236,30 @@ export async function createMovement(params: CreateMovementParams) {
     }
 }
 
-export async function getFinancialStatus() {
-    const supabase = await getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+export async function getFinancialStatus(userId?: string) {
+    // Determine which Supabase client to use based on context
+    // If userId is provided (Cron/Admin mode), use Service Role Key
+    // Otherwise, use session-based client (User mode)
+    const isAdminMode = !!userId;
+
+    let supabase;
+    let effectiveUserId: string;
+
+    if (isAdminMode) {
+        // Admin mode: Use Service Role Key to bypass RLS (for Cron jobs like Advisor)
+        const { createClient } = await import('@supabase/supabase-js');
+        supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        effectiveUserId = userId;
+    } else {
+        // User mode: Use session-based client
+        supabase = await getSupabase();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+        effectiveUserId = user.id;
+    }
 
     // Get current month range
     const now = new Date();
@@ -248,18 +270,21 @@ export async function getFinancialStatus() {
     const { data: movements } = await supabase
         .from('movements')
         .select('*')
+        .eq('user_id', effectiveUserId)
         .gte('date', startOfMonth)
         .lte('date', endOfMonth);
 
-    // Recalculate balances first (same as dashboard does)
-    const { recalculateBalances } = await import('./assets');
-    await recalculateBalances();
+    // Recalculate balances (skip in Admin mode to avoid deep refactoring)
+    if (!isAdminMode) {
+        const { recalculateBalances } = await import('./assets');
+        await recalculateBalances();
+    }
 
     // Fetch total balance from all accounts (excluding savings, to match dashboard)
     const { data: accounts } = await supabase
         .from('accounts')
         .select('balance, type')
-        .eq('user_id', user.id)
+        .eq('user_id', effectiveUserId)
         .neq('type', 'savings');
 
     const totalBalance = accounts?.reduce((sum, acc) => sum + (acc.balance || 0), 0) || 0;
@@ -510,7 +535,7 @@ export async function findPendingMovement(searchTerm: string): Promise<{
     }
 
     if (!movements || movements.length === 0) {
-        return { success: false, error: `Nenhuma conta pendente encontrada com "${searchTerm}". Se for uma conta única, diga: "Paguei X de ${searchTerm}"` };
+        return { success: false, error: `Nenhuma conta pendente encontrada com "${searchTerm}".` };
     }
 
     return { success: true, movement: movements[0] };
