@@ -238,7 +238,21 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`skip_limit\`: Se true, pular pergunta de limite (quando usuário diz "sem limite", "não sei", "pular", "depois").
    - **Ação**: Cria o cartão de crédito e confirma.
 
-10c. **GET_INVOICE** (Consultar fatura do cartão)
+10c. **UPDATE_CREDIT_CARD** (Alterar cartão de crédito)
+   - **QUANDO USAR**: Quando o usuário quer alterar limite, dia de fechamento ou vencimento de um cartão.
+   - **Gatilhos**:
+     - "Alterar limite do Nubank para 5000"
+     - "Mudar vencimento do Itaú para dia 10"
+     - "Trocar fechamento do cartão X"
+     - "Aumentar limite do X"
+   - **Slots**:
+     - \`card_name\`: Nome do cartão (OBRIGATÓRIO).
+     - \`new_limit\`: Novo limite (OPCIONAL).
+     - \`new_closing_day\`: Novo dia de fechamento (OPCIONAL).
+     - \`new_due_day\`: Novo dia de vencimento (OPCIONAL).
+   - **Ação**: Atualiza as configurações do cartão.
+
+10d. **GET_INVOICE** (Consultar fatura do cartão)
    - **QUANDO USAR**: Quando o usuário quer saber o valor da fatura (aberta ou de um mês específico).
    - **Gatilhos**:
      - "Quanto tá a fatura do X?"
@@ -1737,6 +1751,52 @@ export async function processCommand(input: string, history: string[] = [], inpu
       } catch (error) {
         console.error('[CREATE_CREDIT_CARD] Error:', error);
         finalMessage = `❌ Erro ao criar cartão: ${error}`;
+      }
+    }
+  }
+
+  // Handle UPDATE_CREDIT_CARD - update card settings
+  if (parsedResponse.intent === 'UPDATE_CREDIT_CARD') {
+    const d = parsedResponse.data;
+    if (!d.card_name) {
+      finalMessage = `❓ Qual cartão você quer alterar?`;
+    } else {
+      const { getCardByName, updateCreditCard } = await import('./assets');
+      const card = await getCardByName(d.card_name);
+
+      if (!card) {
+        finalMessage = `❌ Não encontrei o cartão "${d.card_name}".`;
+      } else {
+        const updates: any = {};
+        const changes: string[] = [];
+
+        if (d.new_limit) {
+          updates.limit_amount = d.new_limit;
+          const oldLimit = card.limit_amount ? card.limit_amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Sem limite';
+          const newLimit = d.new_limit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          changes.push(`Limite: ${oldLimit} → ${newLimit}`);
+        }
+
+        if (d.new_closing_day) {
+          updates.closing_day = d.new_closing_day;
+          changes.push(`Fechamento: dia ${card.closing_day} → dia ${d.new_closing_day}`);
+        }
+
+        if (d.new_due_day) {
+          updates.due_day = d.new_due_day;
+          changes.push(`Vencimento: dia ${card.due_day} → dia ${d.new_due_day}`);
+        }
+
+        if (changes.length > 0) {
+          try {
+            await updateCreditCard(card.id, updates);
+            finalMessage = `✅ Cartão **${card.name}** atualizado!\n\n${changes.map(c => `• ${c}`).join('\n')}`;
+          } catch (e: any) {
+            finalMessage = `❌ Erro ao atualizar cartão: ${e.message}`;
+          }
+        } else {
+          finalMessage = `❓ O que você quer alterar no cartão ${card.name}? (Limite, fechamento ou vencimento)`;
+        }
       }
     }
   }
