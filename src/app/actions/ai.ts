@@ -343,6 +343,15 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`search_term\`: Nome da recorrência a ser cancelada.
    - **Ação**: Busca e desativa a recorrência correspondente.
 
+11b. **LIST_RECURRENCES** (Listar contas fixas/assinaturas)
+   - **QUANDO USAR**: Quando o usuário quer ver todas as suas contas recorrentes.
+   - **Gatilhos**:
+     - "Quais são minhas contas fixas?"
+     - "Listar assinaturas"
+     - "O que eu pago todo mês?"
+     - "Ver minhas recorrências"
+   - **Ação**: Lista todas as recorrências ativas.
+
 12. **SET_AUTO_DEBIT** (Criar/marcar débito automático) ⚠️ PRIORIDADE ALTA
    - **QUANDO USAR**: Quando o usuário menciona "débito automático", "DA", "debita automático", ou diz que o banco paga sozinho.
    - **Gatilhos**:
@@ -1645,6 +1654,35 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
     } else {
       finalMessage = `❌ Não entendi qual recorrência você quer cancelar. Tente: "Cancela o aluguel".`;
+    }
+  }
+
+  // Handle LIST_RECURRENCES - list all active recurrences
+  if (parsedResponse.intent === 'LIST_RECURRENCES') {
+    const { getRecurrences } = await import('./financial');
+    const recurrences = await getRecurrences();
+    const activeRecurrences = recurrences.filter(r => r.active);
+
+    if (activeRecurrences.length === 0) {
+      finalMessage = `📝 Você não tem nenhuma conta fixa ou assinatura cadastrada.`;
+    } else {
+      const list = activeRecurrences.map(r => {
+        const amountStr = r.amount > 0
+          ? r.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          : 'Valor variável';
+
+        const [year, month, day] = r.next_due_date.split('-');
+        const dayStr = `dia ${day}`;
+        const autoDebitIcon = r.is_auto_debit ? '⚡' : '';
+
+        return `• **${r.description}**: ${amountStr} (todo ${dayStr}) ${autoDebitIcon}`;
+      }).join('\n');
+
+      // Calculate total fixed expenses
+      const totalFixed = activeRecurrences.reduce((sum, r) => sum + r.amount, 0);
+      const totalStr = totalFixed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+      finalMessage = `📅 **Suas Contas Fixas**\n\n${list}\n\n**Total Estimado: ${totalStr}**`;
     }
   }
 
