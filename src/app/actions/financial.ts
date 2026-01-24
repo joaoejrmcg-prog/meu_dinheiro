@@ -3,7 +3,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { Movement, Recurrence } from '../types';
+import { Movement, Recurrence, Loan } from '../types';
 
 async function getSupabase() {
     const cookieStore = await cookies();
@@ -2160,3 +2160,26 @@ export async function adjustAccountBalance(accountId: string, newBalance: number
     revalidatePath('/', 'layout');
     return { success: true, adjustmentAmount: diff, accountName: account.name };
 }
+
+// ============ LOANS ============
+
+export async function getLoans(): Promise<Loan[]> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('loans')
+        .select('*')
+        .eq('user_id', user.id)
+        .gt('remaining_amount', 0) // Only active loans
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching loans:", error);
+        return [];
+    }
+
+    return data || [];
+}
+

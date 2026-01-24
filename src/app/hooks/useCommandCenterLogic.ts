@@ -1676,6 +1676,18 @@ export function useCommandCenterLogic() {
             const response = await processCommand(userInput, recentHistory, inputType, userLevel);
 
             // ==========================================
+            // HANDLE NAVIGATE INTENT (Server-side trigger)
+            // ==========================================
+            if (response.intent === 'NAVIGATE' && response.data?.route) {
+                const route = response.data.route;
+                addMessage('assistant', response.message, 'success');
+                setTimeout(() => {
+                    router.push(route);
+                }, 1000);
+                return;
+            }
+
+            // ==========================================
             // HANDLE RECONCILE_PAYMENT INTENT
             // ==========================================
             if (response.intent === 'RECONCILE_PAYMENT' && response.data?.search_term) {

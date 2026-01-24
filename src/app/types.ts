@@ -145,6 +145,8 @@ export type IntentType =
     | 'CREATE_INSTALLMENT'
     | 'CREDIT_CARD_PURCHASE'
     | 'CREATE_LOAN'
+    | 'CHECK_LOAN'
+    | 'LIST_LOANS'
     | 'LOAN_ASK_PAYMENT_PLAN'
     | 'LOAN_PAYMENT_PLAN'
     | 'CREATE_GOAL'
