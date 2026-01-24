@@ -127,6 +127,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
 
 2. **GET_FINANCIAL_STATUS** (Consultar saúde financeira)
    - Gatilhos: "Como estou?", "Saldo real", "Quanto ganhei de verdade?".
+   - **NÃO USE PARA LISTAR CONTAS**: Se o usuário pedir "listar contas", "meus saldos", "quais contas tenho", USE **LIST_ACCOUNTS**.
    - Retorna: Renda Real vs Fluxo de Caixa.
 
 3. **ADJUST_BALANCE** (Corrigir saldo inicial)
@@ -223,37 +224,6 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - "Minha conta principal agora é X"
      - "Define X como conta padrão"
      - "Quero que a X seja a conta principal"
-   - **Exemplos**:
-     - "Torna a Carteira minha conta principal" → SET_DEFAULT_ACCOUNT, account_name: "Carteira"
-     - "Minha conta principal agora é o Nubank" → SET_DEFAULT_ACCOUNT, account_name: "Nubank"
-   - **Slots**:
-     - \`account_name\`: Nome da conta que será a principal.
-   - **Ação**: Define a conta como padrão para novos lançamentos.
-
-10. **CREATE_ACCOUNT** (Criar nova conta bancária)
-   - **QUANDO USAR**: Quando o usuário quer criar uma nova conta/banco.
-   - **Gatilhos**:
-     - "Criar conta no X"
-     - "Abri uma conta no X"
-     - "Quero criar uma conta no X"
-     - "Nova conta no X"
-     - "Adicionar banco X"
-   - **Exemplos**:
-     - "Criar conta no Santander" → CREATE_ACCOUNT, account_name: "Santander", account_type: "bank"
-     - "Abri uma conta no Inter" → CREATE_ACCOUNT, account_name: "Inter", account_type: "bank"
-     - "Quero criar uma conta poupança" → CREATE_ACCOUNT, account_name: "Poupança", account_type: "savings"
-   - **Slots**:
-     - \`account_name\`: Nome da conta/banco (OBRIGATÓRIO).
-     - \`account_type\`: Tipo da conta - "bank" (padrão) ou "savings".
-   - **Ação**: Cria a conta e confirma para o usuário.
-
-10b. **CREATE_CREDIT_CARD** (Criar cartão de crédito) ⚠️ DIFERENTE DE CONTA!
-   - **QUANDO USAR**: Quando o usuário quer criar um CARTÃO DE CRÉDITO (não conta corrente).
-   - **Gatilhos**:
-     - "Criar cartão X"
-     - "Cadastrar cartão X"
-     - "Quero adicionar meu cartão X"
-     - "Cartão X com fechamento dia Y e vencimento dia Z"
    - **Exemplos**:
      - "Criar cartão Nubank com fechamento dia 10 e vencimento dia 17" → CREATE_CREDIT_CARD, card_name: "Nubank", closing_day: 10, due_day: 17
      - "Quero cadastrar meu cartão Itaú" → CREATE_CREDIT_CARD, card_name: "Itaú" (perguntar fechamento e vencimento)
@@ -1358,6 +1328,29 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
     } else {
       finalMessage = `❌ Não entendi o nome da conta. Tente: "Criar conta no Santander" ou "Abri uma conta no Inter".`;
+    }
+  }
+
+  // Handle LIST_ACCOUNTS intent
+  if (parsedResponse.intent === 'LIST_ACCOUNTS') {
+    const { getAccounts } = await import('./assets');
+    const accounts = await getAccounts();
+
+    if (accounts.length === 0) {
+      finalMessage = `📝 Você ainda não tem nenhuma conta cadastrada. Apenas a sua Carteira padrão.`;
+    } else {
+      const accountLines = accounts.map(acc => {
+        const balanceStr = acc.balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const typeIcon = acc.type === 'wallet' ? '💵' : (acc.type === 'savings' ? '🐷' : '🏦');
+        const defaultIcon = acc.is_default ? ' ⭐' : '';
+        return `${typeIcon} **${acc.name}**: ${balanceStr}${defaultIcon}`;
+      });
+
+      // Calculate total balance
+      const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+      const totalStr = totalBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+      finalMessage = `💰 **Suas Contas**\n\n${accountLines.join('\n')}\n\n**Total Geral: ${totalStr}**`;
     }
   }
 
