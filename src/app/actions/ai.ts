@@ -317,13 +317,16 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
    - **Ação**: Marca todos os movimentos daquela fatura como pagos (is_paid=true).
 
 11. **CREATE_RECURRENCE** (Criar conta recorrente/mensal)
-   - **QUANDO USAR**: Quando o usuário menciona "TODO dia X", "toda semana", "mensal", "todo mês".
+   - **QUANDO USAR**: Quando o usuário menciona "TODO dia X", "toda semana", "mensal", "todo mês", ou **"assinei"/"assinatura"** (implica recorrência mensal).
    - **Gatilhos**:
      - "Minha conta de X vence TODO dia Y"
      - "Pago X todo mês dia Y"
      - "Recebo salário todo dia Y"
      - "Conta de X é mensal, dia Y"
      - "Netflix de X todo dia Y no Nubank"
+     - "Assinei X por Y reais"
+     - "Assinei X no cartão"
+     - "Fiz assinatura de X"
    - **Exemplos**:
      - "Conta de luz vence todo dia 10" → CREATE_RECURRENCE, description: "Conta de luz", due_day: 10, type: "expense"
      - "Recebo salário todo dia 5" → CREATE_RECURRENCE, description: "Salário", due_day: 5, type: "income"
@@ -337,6 +340,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`type\`: 'income' | 'expense'.
      - \`frequency\`: 'monthly' (padrão) | 'weekly'.
      - \`card_name\`: Nome do cartão (OPCIONAL).
+     - \`category\`: Categoria (OPCIONAL - ex: "Assinaturas", "Lazer". Infira baseado no item se possível).
     - **Ação**: Cria uma recorrência que aparecerá no calendário todo mês.
 
 11. **DELETE_RECURRENCE** (Cancelar/excluir conta recorrente)
@@ -409,6 +413,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      5. \`downPaymentValue\` (Valor da entrada, OBRIGATÓRIO se hasDownPayment=true)
      6. \`dueDate\` (Data da primeira parcela/vencimento - formato YYYY-MM-DD)
      7. \`store\` (OPCIONAL - onde comprou)
+      8. \`category\` (OPCIONAL - categoria da compra, ex: \"Vestuário\", \"Eletrônicos\", \"Casa\". Infira baseado no item se possível)
    - **Gatilhos**:
      - "Comprei X em Y vezes"
      - "Parcelei X em Y vezes"
@@ -643,6 +648,18 @@ Se no histórico recente você (IA) fez uma pergunta sobre parcelamento (entrada
   - \`type\`: income
   - **NÃO pergunte "do que se trata?" ou "qual a descrição?" - JÁ FOI DITO!**
 
+**REGRA CRÍTICA PARA RECORRÊNCIAS (Assinaturas)** ⚠️:
+Se no histórico recente você perguntou o DIA do vencimento de uma recorrência, e o usuário respondeu APENAS um número:
+- **NÃO** crie um novo gasto com esse valor!
+- **RECUPERE** os dados da recorrência (description, amount, etc) do histórico.
+- **USE O NÚMERO** como \`due_day\`.
+- **Exemplo**:
+  1. User: "Assinei Netflix por 45 reais"
+     AI: { intent: "CONFIRMATION_REQUIRED", message: "Qual dia vence?", data: { originalIntent: "CREATE_RECURRENCE", description: "Netflix", amount: 45 } }
+  2. User: "12"
+     **ERRADO**: Registrar gasto de R$ 12,00. ❌
+     **CORRETO**: { intent: "CREATE_RECURRENCE", data: { description: "Netflix", amount: 45, due_day: 12 } } ✅
+
 **REGRA DE OURO**: Se no CONTEXTO DA CONVERSA o usuário já mencionou O QUE foi (estante, cadeira, tênis, etc.), isso É a descrição. Use-a diretamente.
 
 ### INTERPRETAÇÃO DE DATAS:
@@ -831,14 +848,28 @@ export async function processCommand(input: string, history: string[] = [], inpu
       let enrichedInput = input;
       const isJustNumber = /^\d+([.,]\d+)?$/.test(input.trim());
       if (isJustNumber && history && history.length > 0) {
-        // Look for description in the MOST RECENT user message (reverse to find last)
-        const userMessages = history.filter(h => h.startsWith('Usuário:'));
-        const prevUserMsg = userMessages[userMessages.length - 1]; // Get the LAST one
-        if (prevUserMsg) {
-          // Extract key info from that message
-          const msgContent = prevUserMsg.replace('Usuário:', '').trim();
-          // Add explicit context to the input
-          enrichedInput = `O valor é ${input}. (CONTEXTO: o usuário disse antes "${msgContent}" - USE ESSA INFORMAÇÃO COMO DESCRIÇÃO, NÃO PERGUNTE NOVAMENTE!)`;
+        // Check if AI asked for a day/date recently
+        const lastAIMessage = history.filter(h => h.startsWith('IA:') || h.startsWith('Assistente:')).pop();
+        const askedForDate = lastAIMessage && (
+          lastAIMessage.toLowerCase().includes('dia') ||
+          lastAIMessage.toLowerCase().includes('data') ||
+          lastAIMessage.toLowerCase().includes('vencimento')
+        );
+
+        if (!askedForDate) {
+          // Only assume it's an AMOUNT if AI didn't ask for a date
+          // Look for description in the MOST RECENT user message (reverse to find last)
+          const userMessages = history.filter(h => h.startsWith('Usuário:'));
+          const prevUserMsg = userMessages[userMessages.length - 1]; // Get the LAST one
+          if (prevUserMsg) {
+            // Extract key info from that message
+            const msgContent = prevUserMsg.replace('Usuário:', '').trim();
+            // Add explicit context to the input
+            enrichedInput = `O valor é ${input}. (CONTEXTO: o usuário disse antes "${msgContent}" - USE ESSA INFORMAÇÃO COMO DESCRIÇÃO, NÃO PERGUNTE NOVAMENTE!)`;
+          }
+        } else {
+          // AI asked for a date, and user provided a number. Explicitly tell AI this is a day/date.
+          enrichedInput = `O dia é ${input}. (CONTEXTO: você perguntou a data/dia anteriormente. Este número refere-se ao DIA, NÃO ao valor!)`;
         }
       }
 
@@ -1490,13 +1521,20 @@ export async function processCommand(input: string, history: string[] = [], inpu
           accountId = account.id;
           locationName = ` na conta ${account.name}`;
         } else {
-          finalMessage = `❌ Não encontrei a conta "${d.account_name}".`;
-          return {
-            intent: parsedResponse.intent as IntentType,
-            data: parsedResponse.data,
-            message: finalMessage,
-            confidence: 0.9
-          };
+          // Fallback: Check if it's actually a credit card (e.g. "no Nubank" where Nubank is a card)
+          const card = await getCardByName(d.account_name);
+          if (card) {
+            cardId = card.id;
+            locationName = ` no cartão ${card.name}`;
+          } else {
+            finalMessage = `❌ Não encontrei a conta nem cartão "${d.account_name}".`;
+            return {
+              intent: parsedResponse.intent as IntentType,
+              data: parsedResponse.data,
+              message: finalMessage,
+              confidence: 0.9
+            };
+          }
         }
       }
 
@@ -1546,6 +1584,16 @@ export async function processCommand(input: string, history: string[] = [], inpu
 
       const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
 
+      // Lookup category ID by name (same logic as CREATE_INSTALLMENT)
+      let categoryId = undefined;
+      if (d.category) {
+        const { getCategoryByName } = await import('./categories');
+        const category = await getCategoryByName(d.category);
+        if (category) {
+          categoryId = category.id;
+        }
+      }
+
       try {
         await createRecurrence({
           description: d.description,
@@ -1554,7 +1602,8 @@ export async function processCommand(input: string, history: string[] = [], inpu
           frequency: d.frequency || 'monthly',
           next_due_date: nextDueDateStr,
           card_id: cardId,
-          account_id: accountId
+          account_id: accountId,
+          category_id: categoryId
         });
 
         const typeLabel = d.type === 'income' ? 'recebimento' : 'conta';
@@ -1602,6 +1651,16 @@ export async function processCommand(input: string, history: string[] = [], inpu
     } else {
       const { createInstallmentPurchase } = await import('./financial');
 
+      // Lookup category ID by name (same logic as REGISTER_MOVEMENT)
+      let categoryId = undefined;
+      if (d.category) {
+        const { getCategoryByName } = await import('./categories');
+        const category = await getCategoryByName(d.category);
+        if (category) {
+          categoryId = category.id;
+        }
+      }
+
       const result = await createInstallmentPurchase({
         description: d.description,
         totalAmount: d.amount,
@@ -1610,7 +1669,8 @@ export async function processCommand(input: string, history: string[] = [], inpu
         downPaymentValue: d.downPaymentValue || 0,
         firstDueDate: d.dueDate,
         store: d.store,
-        type: d.type || 'expense'
+        type: d.type || 'expense',
+        categoryId: categoryId
       });
 
       if (result.success && result.movements) {

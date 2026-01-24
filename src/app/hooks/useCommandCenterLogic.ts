@@ -1519,7 +1519,9 @@ export function useCommandCenterLogic() {
         // SLOT-FILLING LOGIC: Check if we can complete pending slots
         // ==========================================
 
-        if (isJustNumber && pendingSlots && pendingSlots.description) {
+        // CRITICAL FIX: Do NOT hijack recurrence slot-filling!
+        // If the pending intent is CREATE_RECURRENCE, let the AI handle the number (it's likely a day)
+        if (isJustNumber && pendingSlots && pendingSlots.description && pendingSlots.intent !== 'CREATE_RECURRENCE') {
             // User sent just a number and we have pending slots with description
             const cleanedValue = userInput.trim().replace(',', '.');
             const amount = parseFloat(cleanedValue);
@@ -1824,7 +1826,7 @@ export function useCommandCenterLogic() {
             if (response.intent === 'CONFIRMATION_REQUIRED' && response.data) {
                 // AI is asking for more info, save the partial slots
                 const partialSlots: typeof pendingSlots = {
-                    intent: 'REGISTER_MOVEMENT',
+                    intent: response.data.originalIntent || 'REGISTER_MOVEMENT',
                     description: response.data.description,
                     amount: response.data.amount,
                     date: response.data.date,
