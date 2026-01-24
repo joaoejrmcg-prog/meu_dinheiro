@@ -7,10 +7,10 @@
   - [x] Implementar fix no Backend (regras de slot-filling para datas)
   - [x] Validar com usuário ("Assinei Netflix...")
 
-- [ ] **Verificar Categorização em Parcelamentos**
-  - [ ] Testar `CREATE_INSTALLMENT` com inferência de categoria
-  - [ ] Testar `CREDIT_CARD_PURCHASE` com inferência de categoria
-  - [ ] Validar persistência no banco de dados
+- [x] **Verificar Categorização em Parcelamentos**
+  - [x] Testar `CREATE_INSTALLMENT` com inferência de categoria
+  - [x] Testar `CREDIT_CARD_PURCHASE` com inferência de categoria
+  - [x] Validar persistência no banco de dados
 
-- [ ] **Limpeza**
+- [x] **Limpeza**
   - [x] Remover logs de debug

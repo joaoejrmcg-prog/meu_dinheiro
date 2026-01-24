@@ -413,7 +413,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      5. \`downPaymentValue\` (Valor da entrada, OBRIGATÓRIO se hasDownPayment=true)
      6. \`dueDate\` (Data da primeira parcela/vencimento - formato YYYY-MM-DD)
      7. \`store\` (OPCIONAL - onde comprou)
-      8. \`category\` (OPCIONAL - categoria da compra, ex: \"Vestuário\", \"Eletrônicos\", \"Casa\". Infira baseado no item se possível)
+      8. \`category\` (OPCIONAL - INFIRA AUTOMATICAMENTE usando as regras de CATEGORIZAÇÃO INTELIGENTE. Ex: "Tênis" -> "Vestuário")
    - **Gatilhos**:
      - "Comprei X em Y vezes"
      - "Parcelei X em Y vezes"
@@ -441,6 +441,7 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      2. \`amount\` (Valor)
      3. \`installments\` (Quantas vezes? Use 1 se não mencionou parcelamento)
      4. \`card_name\` (OPCIONAL - nome do cartão. Se não especificado, usa o cartão principal)
+     5. \`category\` (OPCIONAL - INFIRA AUTOMATICAMENTE usando as regras de CATEGORIZAÇÃO INTELIGENTE. Ex: "Jantar" -> "Alimentação")
    - **Gatilhos**:
      - "Comprei X no cartão"
      - "Gastei X no crédito"
