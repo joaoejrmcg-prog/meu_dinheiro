@@ -7,6 +7,7 @@ import { getUserProfile, getSubscriptionDetails } from '../actions/profile';
 import { getPlanDisplayName } from '../utils/plans';
 import SubscriptionManager from '../components/SubscriptionManager';
 import BiometricSettings from '../components/BiometricSettings';
+import AdvisorTestButton from '../components/AdvisorTestButton';
 
 export default async function PerfilPage() {
     const cookieStore = await cookies();
@@ -98,6 +99,11 @@ export default async function PerfilPage() {
 
                 {/* Biometria */}
                 <BiometricSettings />
+
+                {/* Advisor Test */}
+                <div className="mb-4">
+                    <AdvisorTestButton />
+                </div>
 
                 {/* Informações do Usuário */}
                 <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-6 mb-4">

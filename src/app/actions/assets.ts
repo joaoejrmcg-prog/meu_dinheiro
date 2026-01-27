@@ -410,6 +410,17 @@ export async function updateCreditCard(id: string, params: { name?: string; clos
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
+    // 1. Fetch current card details BEFORE update
+    const { data: oldCard } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+    if (!oldCard) throw new Error("Cartão não encontrado");
+
+    // 2. Perform the update
     const { error } = await supabase
         .from('credit_cards')
         .update(params)
@@ -417,7 +428,149 @@ export async function updateCreditCard(id: string, params: { name?: string; clos
         .eq('user_id', user.id);
 
     if (error) throw error;
+
+    // 3. If due_day or closing_day changed, we need to update related data
+    const closingDayChanged = params.closing_day !== undefined && params.closing_day !== oldCard.closing_day;
+    const dueDayChanged = params.due_day !== undefined && params.due_day !== oldCard.due_day;
+
+    if (closingDayChanged || dueDayChanged) {
+        const newClosingDay = params.closing_day ?? oldCard.closing_day;
+        const newDueDay = params.due_day ?? oldCard.due_day;
+
+        console.log(`[UPDATE CARD] Card ${oldCard.name} updated. Closing: ${oldCard.closing_day}->${newClosingDay}, Due: ${oldCard.due_day}->${newDueDay}`);
+
+        // 3a. Update UNPAID MOVEMENTS linked to this card
+        // We need to recalculate their due_date based on the new card settings
+        const { data: unpaidMovements } = await supabase
+            .from('movements')
+            .select('id, date, description')
+            .eq('user_id', user.id)
+            .eq('card_id', id)
+            .eq('is_paid', false);
+
+        if (unpaidMovements && unpaidMovements.length > 0) {
+            console.log(`[UPDATE CARD] Updating ${unpaidMovements.length} unpaid movements...`);
+
+            for (const mov of unpaidMovements) {
+                const purchaseDate = new Date(mov.date);
+                // Adjust for timezone if needed, but usually YYYY-MM-DD string is parsed as UTC in JS Date(string)
+                // Let's ensure we treat the date string as local date parts
+                const [y, m, d] = mov.date.split('-').map(Number);
+                const localPurchaseDate = new Date(y, m - 1, d);
+
+                const newDueDate = calculateCardDueDate(localPurchaseDate, newClosingDay, newDueDay);
+                const newDueDateStr = newDueDate.toISOString().split('T')[0];
+
+                await supabase
+                    .from('movements')
+                    .update({ due_date: newDueDateStr })
+                    .eq('id', mov.id);
+            }
+        }
+
+        // 3b. Update RECURRENCES linked to this card
+        // ONLY if they matched the OLD due day
+        if (dueDayChanged) {
+            const { data: recurrences } = await supabase
+                .from('recurrences')
+                .select('id, next_due_date, description')
+                .eq('user_id', user.id)
+                .eq('card_id', id)
+                .eq('active', true);
+
+            if (recurrences && recurrences.length > 0) {
+                console.log(`[UPDATE CARD] Checking ${recurrences.length} recurrences for update...`);
+
+                for (const rec of recurrences) {
+                    const [ry, rm, rd] = rec.next_due_date.split('-').map(Number);
+
+                    // HEURISTIC: Only update if the recurrence day matches the OLD due day
+                    if (rd === oldCard.due_day) {
+                        console.log(`[UPDATE CARD] Updating recurrence "${rec.description}" from day ${rd} to ${newDueDay}`);
+
+                        // Construct new date keeping the same month/year, but changing the day
+                        // Handle overflow (e.g. Feb 30) by letting Date object roll over, 
+                        // OR clamp to last day of month?
+                        // Standard credit card behavior: if due day > last day of month, it's the last day.
+                        // But JS Date(2024, 1, 30) becomes March 1st or 2nd.
+                        // Let's try to keep it in the same month if possible.
+
+                        let newDate = new Date(ry, rm - 1, newDueDay);
+
+                        // If month changed (overflow), set to last day of original month
+                        if (newDate.getMonth() !== rm - 1) {
+                            newDate = new Date(ry, rm, 0); // Last day of previous month (which is the target month)
+                        }
+
+                        const newDateStr = newDate.toISOString().split('T')[0];
+
+                        await supabase
+                            .from('recurrences')
+                            .update({ next_due_date: newDateStr })
+                            .eq('id', rec.id);
+                    } else {
+                        console.log(`[UPDATE CARD] Skipping recurrence "${rec.description}" (Day ${rd} != Old Due Day ${oldCard.due_day})`);
+                    }
+                }
+            }
+        }
+    }
+
     return { success: true };
+}
+
+/**
+ * Helper to calculate the due date of a credit card purchase
+ * based on closing day and due day.
+ */
+function calculateCardDueDate(purchaseDate: Date, closingDay: number, dueDay: number): Date {
+    const pDay = purchaseDate.getDate();
+    const pMonth = purchaseDate.getMonth();
+    const pYear = purchaseDate.getFullYear();
+
+    let invoiceMonth = pMonth;
+    let invoiceYear = pYear;
+
+    // If purchase is AFTER closing day, it goes to NEXT month's invoice
+    if (pDay > closingDay) {
+        invoiceMonth++;
+        if (invoiceMonth > 11) {
+            invoiceMonth = 0;
+            invoiceYear++;
+        }
+    }
+
+    // Determine due date based on invoice month
+    let dueMonth = invoiceMonth;
+    let dueYear = invoiceYear;
+
+    // If due day is smaller or equal to closing day, it means the due date 
+    // is in the NEXT month relative to the invoice closing.
+    // Example: Closes 25th, Due 5th. 
+    // Invoice Jan (closes Jan 25). Due Feb 5.
+    if (dueDay <= closingDay) {
+        dueMonth++;
+        if (dueMonth > 11) {
+            dueMonth = 0;
+            dueYear++;
+        }
+    }
+    // If due day is larger than closing day, it's usually in the SAME month as closing.
+    // Example: Closes 10th, Due 20th.
+    // Invoice Jan (closes Jan 10). Due Jan 20.
+    else {
+        // Same month
+    }
+
+    // Construct date
+    let dueDate = new Date(dueYear, dueMonth, dueDay);
+
+    // Handle invalid dates (e.g. Feb 30) -> Clamp to last day of month
+    if (dueDate.getMonth() !== dueMonth) {
+        dueDate = new Date(dueYear, dueMonth + 1, 0);
+    }
+
+    return dueDate;
 }
 
 export async function deleteCreditCard(id: string) {
