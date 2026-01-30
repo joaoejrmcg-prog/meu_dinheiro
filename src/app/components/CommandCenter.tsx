@@ -59,21 +59,38 @@ export default function CommandCenter() {
     const [userLevel, setUserLevel] = useState<UserLevel>(0);
     const [actionCount, setActionCount] = useState(0);
     const [tutorialCompleted, setTutorialCompletedState] = useState(true);
+    const [isInitializing, setIsInitializing] = useState(true);
     const { triggerTutorial } = useDashboard();
 
     useEffect(() => {
-        getSubscriptionDetails().then(data => {
-            setSubscription(data);
-        }).catch(console.error);
+        const loadData = async () => {
+            try {
+                // Minimum loading time simulation (1s) to show the animation
+                const minLoadTime = new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Load user level, action count, and tutorial status
-        getUserLevel().then(setUserLevel);
-        getActionCount().then(setActionCount);
+                const [subscriptionData, level, count, { getTutorialCompleted }] = await Promise.all([
+                    getSubscriptionDetails(),
+                    getUserLevel(),
+                    getActionCount(),
+                    import('../actions/profile'),
+                    minLoadTime
+                ]);
 
-        // Import and load tutorial completed status
-        import('../actions/profile').then(({ getTutorialCompleted }) => {
-            getTutorialCompleted().then(setTutorialCompletedState);
-        });
+                setSubscription(subscriptionData);
+                setUserLevel(level);
+                setActionCount(count);
+
+                const tutorialStatus = await getTutorialCompleted();
+                setTutorialCompletedState(tutorialStatus);
+
+            } catch (error) {
+                console.error("Error initializing CommandCenter:", error);
+            } finally {
+                setIsInitializing(false);
+            }
+        };
+
+        loadData();
 
         // Listen for transaction updates to refresh action count AND user level
         const handleTransactionUpdate = () => {
@@ -154,8 +171,15 @@ export default function CommandCenter() {
                         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 border" style={{ background: 'rgba(14, 165, 233, 0.1)', borderColor: 'rgba(14, 165, 233, 0.2)' }}>
                             <Bot className="w-8 h-8" style={{ color: 'var(--light-primary)' }} />
                         </div>
-                        <h4 className="text-lg font-medium mb-2" style={{ color: 'var(--light-text-primary)' }}>Como posso ajudar?</h4>
-                        <p className="text-sm max-w-xs" style={{ color: 'var(--light-text-secondary)' }}>
+
+                        <div className="flex items-center gap-2 mb-2">
+                            <h4 className="text-lg font-medium" style={{ color: 'var(--light-text-primary)' }}>
+                                {isInitializing ? "Iniciando sistema..." : "Como posso ajudar?"}
+                            </h4>
+                            {isInitializing && <Loader2 className="w-4 h-4 animate-spin text-sky-500" />}
+                        </div>
+
+                        <p className={cn("text-sm max-w-xs transition-opacity duration-300", isInitializing ? "opacity-0" : "opacity-100")} style={{ color: 'var(--light-text-secondary)' }}>
                             Tente dizer: "Gastei 50 reais no almoço" ou "Qual meu saldo?".
                         </p>
                     </div>

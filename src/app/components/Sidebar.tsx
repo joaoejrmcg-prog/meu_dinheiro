@@ -111,17 +111,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         const isLocked = userLevel < item.minLevel;
 
                         if (isLocked) {
-                            return (
-                                <div
-                                    key={item.href}
-                                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-neutral-600 cursor-not-allowed"
-                                    title={`Desbloqueado no nível ${item.minLevel}`}
-                                >
-                                    <Icon className="w-5 h-5" />
-                                    <span className="font-medium flex-1">{item.label}</span>
-                                    <Lock className="w-4 h-4 text-neutral-700" />
-                                </div>
-                            );
+                            return null;
                         }
 
                         return (
