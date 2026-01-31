@@ -11,13 +11,30 @@ export function useBiometricAuth() {
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        // Verificar se navegador suporta WebAuthn
-        const supported = window.PublicKeyCredential !== undefined;
-        setIsSupported(supported);
+        try {
+            // Verificar proteções básicas de ambiente (SSR vs Client)
+            if (typeof window === 'undefined' || !window.PublicKeyCredential) {
+                setIsSupported(false);
+                return;
+            }
 
-        // Verificar se usuário já cadastrou biometria
-        const enrolled = localStorage.getItem('biometric_enrolled') === 'true';
-        setIsEnrolled(enrolled);
+            // Verificar se navegador suporta WebAuthn de forma segura
+            Promise.resolve(
+                window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+            ).then(available => {
+                setIsSupported(available);
+            }).catch(err => {
+                console.warn('WebAuthn check failed:', err);
+                setIsSupported(false);
+            });
+
+            // Verificar se usuário já cadastrou biometria
+            const enrolled = localStorage.getItem('biometric_enrolled') === 'true';
+            setIsEnrolled(enrolled);
+        } catch (e) {
+            console.error('Biometric init error:', e);
+            setIsSupported(false);
+        }
     }, []);
 
     /**
