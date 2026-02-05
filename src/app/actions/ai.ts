@@ -162,6 +162,26 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
      - \`new_account\`: Nova conta (se for correção de conta).
    - **Ação**: Busca o último lançamento e atualiza o campo especificado.
 
+5c. **CORRECT_INITIAL_BALANCE** (Corrigir saldo inicial) ⚠️ IMPORTANTE
+   - **QUANDO USAR**: Quando o usuário quer corrigir o saldo inicial que definiu no tutorial ou ao criar uma conta.
+   - **DIFERENTE DE ADJUST_BALANCE**: Isso NÃO gera lançamento contábil. Apenas corrige o valor de partida.
+   - **Gatilhos**:
+     - "Corrija meu saldo inicial pra X"
+     - "Meu saldo inicial era X"
+     - "Comecei com X, não Y"
+     - "Errei o saldo inicial"
+     - "O saldo inicial tava errado"
+     - "Zera meu saldo inicial"
+   - **Exemplos**:
+     - "Corrija meu saldo inicial pra 0" → CORRECT_INITIAL_BALANCE, new_initial_balance: 0
+     - "Na verdade eu comecei com 500" → CORRECT_INITIAL_BALANCE, new_initial_balance: 500
+     - "Meu saldo inicial era 1000" → CORRECT_INITIAL_BALANCE, new_initial_balance: 1000
+     - "Zera meu saldo inicial" → CORRECT_INITIAL_BALANCE, new_initial_balance: 0
+   - **Slots**:
+     - \`new_initial_balance\`: Novo valor do saldo inicial (OBRIGATÓRIO).
+     - \`account_name\`: Nome da conta (OPCIONAL - se não informado, usa a conta padrão).
+   - **Ação**: Corrige o saldo inicial sem gerar lançamento de ajuste.
+
 6. **CONFIRMATION_REQUIRED**
    - Use APENAS se faltar \`amount\` ou \`description\`.
 
@@ -1255,6 +1275,34 @@ export async function processCommand(input: string, history: string[] = [], inpu
       }
     } else {
       finalMessage = `❌ Não entendi o valor. Tente: "Meu saldo no Nubank é 500"`;
+    }
+  }
+
+  // Handle CORRECT_INITIAL_BALANCE - Fix initial balance without accounting entries
+  if (parsedResponse.intent === 'CORRECT_INITIAL_BALANCE') {
+    const d = parsedResponse.data;
+    if (d.new_initial_balance !== undefined) {
+      const { correctInitialBalance } = await import('./assets');
+
+      const result = await correctInitialBalance({
+        accountName: d.account_name,
+        newInitialBalance: d.new_initial_balance
+      });
+
+      if (result.success) {
+        const formattedNew = d.new_initial_balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const formattedOld = (result.oldInitialBalance || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        if (result.oldInitialBalance === d.new_initial_balance) {
+          finalMessage = `ℹ️ O saldo inicial do **${result.accountName}** já era ${formattedNew}.`;
+        } else {
+          finalMessage = `✅ Saldo inicial do **${result.accountName}** corrigido de ${formattedOld} para ${formattedNew}!\n\n💡 Isso não gerou lançamento contábil.`;
+        }
+      } else {
+        finalMessage = `❌ ${result.error}`;
+      }
+    } else {
+      finalMessage = `❓ Qual é o saldo inicial correto? (ex: "Meu saldo inicial era 500")`;
     }
   }
 

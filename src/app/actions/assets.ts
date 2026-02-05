@@ -265,6 +265,74 @@ export async function setWalletInitialBalance(balance: number): Promise<{ succes
     return { success: true };
 }
 
+/**
+ * Corrige o saldo inicial de qualquer conta.
+ * Diferente de um "ajuste de saldo", isso não gera lançamento contábil.
+ * É usado quando o usuário definiu o saldo inicial errado no tutorial.
+ */
+export async function correctInitialBalance(params: {
+    accountId?: string;
+    accountName?: string;
+    newInitialBalance: number;
+}): Promise<{ success: boolean; error?: string; accountName?: string; oldInitialBalance?: number }> {
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    let targetAccountId = params.accountId;
+
+    // If no accountId provided, try to find by name or use default
+    if (!targetAccountId) {
+        if (params.accountName) {
+            const account = await getAccountByName(params.accountName);
+            if (!account) {
+                return { success: false, error: `Conta "${params.accountName}" não encontrada.` };
+            }
+            targetAccountId = account.id;
+        } else {
+            // Use default account
+            const defaultAccount = await getDefaultAccount();
+            if (!defaultAccount) {
+                return { success: false, error: "Nenhuma conta padrão encontrada." };
+            }
+            targetAccountId = defaultAccount.id;
+        }
+    }
+
+    // Get current account data
+    const { data: account, error: findError } = await supabase
+        .from('accounts')
+        .select('id, name, balance, initial_balance')
+        .eq('id', targetAccountId)
+        .eq('user_id', user.id)
+        .single();
+
+    if (findError || !account) {
+        return { success: false, error: "Conta não encontrada." };
+    }
+
+    // Calculate the adjustment needed
+    const oldInitialBalance = account.initial_balance || 0;
+    const currentBalance = account.balance || 0;
+    const diff = params.newInitialBalance - oldInitialBalance;
+    const newBalance = currentBalance + diff;
+
+    // Update the account
+    const { error: updateError } = await supabase
+        .from('accounts')
+        .update({
+            balance: newBalance,
+            initial_balance: params.newInitialBalance
+        })
+        .eq('id', account.id);
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    return { success: true, accountName: account.name, oldInitialBalance };
+}
+
 // Get account by name (case-insensitive and accent-insensitive)
 export async function getAccountByName(name: string): Promise<Account | null> {
     const supabase = await getSupabase();
