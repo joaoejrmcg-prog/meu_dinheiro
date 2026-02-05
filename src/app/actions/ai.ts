@@ -1123,8 +1123,6 @@ export async function processCommand(input: string, history: string[] = [], inpu
               finalMessage += `\n\n📊 **Fluxo de Caixa**\n\n• Saldo Anterior: ${previousFormatted}\n• Receitas (+): ${incomeFormatted}\n• Despesas (-): ${expenseFormatted}\n\n💰 **Saldo Atual:** ${totalFormatted}`;
             }
           }
-        } else {
-          finalMessage = `❌ Erro ao registrar: ${result.error}`;
         }
       }
     }
