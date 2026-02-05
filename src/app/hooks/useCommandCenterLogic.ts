@@ -346,6 +346,9 @@ export function useCommandCenterLogic() {
             }
 
             setTutorialStep('COMPLETE');
+            // Update user level to 1 IMMEDIATELY after setting balance to prevent loop if user leaves
+            await updateUserLevel(1 as UserLevel);
+            setUserLevel(1);
 
             // Set wallet initial balance
             await setWalletInitialBalance(value);
@@ -359,6 +362,11 @@ export function useCommandCenterLogic() {
                 content: `Perfeito! Vou considerar que você tem ${formatted} disponíveis agora.\n\nSe precisar corrigir, diga: "Corrija meu saldo inicial pra R$ X"\n\nAgora, sempre que você gastar ou receber dinheiro, é só me avisar.`,
                 buttons: [{ label: 'Continuar', value: 'L1_FINISH', variant: 'primary' }]
             }]);
+
+            // Dispatch event to update Sidebar immediately
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('userLevelUpdate', { detail: { level: 1 } }));
+            }
 
             return true; // Handled
         }

@@ -1094,11 +1094,18 @@ export async function processCommand(input: string, history: string[] = [], inpu
             const expenseFormatted = status.realExpense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             const totalFormatted = status.totalBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-            finalMessage += `\n\n📊 **Fluxo de Caixa**\n\n• Saldo Anterior: ${previousFormatted}\n• Receitas (+): ${incomeFormatted}\n• Despesas (-): ${expenseFormatted}\n\n💰 **Saldo Atual:** ${totalFormatted}`;
+            if (status) {
+              const previousFormatted = status.previousBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              const incomeFormatted = status.realIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              const expenseFormatted = status.realExpense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              const totalFormatted = status.totalBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+              finalMessage += `\n\n📊 **Fluxo de Caixa**\n\n• Saldo Anterior: ${previousFormatted}\n• Receitas (+): ${incomeFormatted}\n• Despesas (-): ${expenseFormatted}\n\n💰 **Saldo Atual:** ${totalFormatted}`;
+            }
           }
+        } else {
+          finalMessage = `❌ Erro ao registrar: ${result.error}`;
         }
-      } else {
-        finalMessage = `❌ Erro ao registrar: ${result.error}`;
       }
     }
   }

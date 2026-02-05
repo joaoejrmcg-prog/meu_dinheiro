@@ -283,13 +283,14 @@ export async function getFinancialStatus(userId?: string) {
     // Fetch total balance from all accounts (excluding savings, to match dashboard)
     const { data: accounts } = await supabase
         .from('accounts')
-        .select('balance, type')
+        .select('balance, type, initial_balance')
         .eq('user_id', effectiveUserId)
         .neq('type', 'savings');
 
     const totalBalance = accounts?.reduce((sum, acc) => sum + (acc.balance || 0), 0) || 0;
+    const totalInitialBalance = accounts?.reduce((sum, acc) => sum + (Number(acc.initial_balance) || 0), 0) || 0;
 
-    if (!movements) return { realIncome: 0, realExpense: 0, monthlyBalance: 0, previousBalance: totalBalance, totalBalance };
+    if (!movements) return { realIncome: 0, realExpense: 0, monthlyBalance: 0, previousBalance: totalBalance, totalBalance, isInitialBalanceOnly: Math.abs(totalBalance - totalInitialBalance) < 0.01 };
 
     let realIncome = 0;
     let realExpense = 0;
@@ -309,12 +310,18 @@ export async function getFinancialStatus(userId?: string) {
     // Calculate previous balance (saldo anterior = total - income + expense)
     const previousBalance = totalBalance - realIncome + realExpense;
 
+    // Check if previous balance is exactly equal to the sum of initial balances
+    // This indicates that the "Previous Balance" is just the "Initial Balance" set by the user,
+    // and not a result of past months' accumulation.
+    const isInitialBalanceOnly = Math.abs(previousBalance - totalInitialBalance) < 0.01;
+
     return {
         previousBalance,     // Saldo anterior (antes deste mês)
         realIncome,
         realExpense,
         monthlyBalance: realIncome - realExpense, // Este mês
-        totalBalance // Saldo total em todas as contas
+        totalBalance, // Saldo total em todas as contas
+        isInitialBalanceOnly // Flag para indicar que o saldo anterior é puramente o saldo inicial configurado
     };
 }
 
