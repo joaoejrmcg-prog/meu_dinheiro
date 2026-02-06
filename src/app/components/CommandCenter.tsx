@@ -163,7 +163,7 @@ export default function CommandCenter() {
 
             {/* Chat Area - Tema Claro */}
             <div className={cn(
-                "flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 transition-all duration-300",
+                "flex-1 min-h-0 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 transition-all duration-300",
                 ((isProcessing && inputType === 'voice') || isSpeaking) && "pb-[350px]"
             )} style={{ background: 'var(--light-messages-bg)' }}>
                 {messages.length === 0 && (
