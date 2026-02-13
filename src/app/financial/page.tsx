@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { TrendingDown, TrendingUp, RefreshCw, Plus, Trash2, ChevronLeft, ChevronRight, Calendar, Pencil, X, Sparkles, ArrowRight, ArrowLeftRight } from "lucide-react";
-import { getMovements, getRecurrences, getMonthSummary, deleteMovement, createRecurrence, deleteRecurrence, updateRecurrence, createMovementManual, updateMovement } from "../actions/financial";
+import { getMovements, getRecurrences, getMonthSummary, deleteMovement, createRecurrence, deleteRecurrence, updateRecurrence, createMovementManual, updateMovement, createTransfer } from "../actions/financial";
 import { getAccounts, getCreditCards } from "../actions/assets";
 import { getCategories } from "../actions/categories";
 import { Movement, Recurrence, Account, Category, CreditCard } from "../types";
@@ -271,6 +271,7 @@ export default function FinancialPage() {
                     movements={movements}
                     onDelete={handleDeleteMovement}
                     onRefresh={loadData}
+                    accounts={accounts}
                 />
             ) : (
                 <MovementsTab
@@ -589,8 +590,14 @@ function MovementsTab({ movements, type, onDelete, onRefresh, accounts, categori
                             </div>
                             <button
                                 onClick={() => handleEdit(mov)}
-                                className="p-2 text-neutral-500 hover:text-yellow-400 transition-colors"
-                                title="Editar"
+                                disabled={mov.description?.includes('→') || mov.description?.includes('←')}
+                                className={cn(
+                                    "p-2 transition-colors",
+                                    (mov.description?.includes('→') || mov.description?.includes('←'))
+                                        ? "text-neutral-700 cursor-not-allowed"
+                                        : "text-neutral-500 hover:text-yellow-400"
+                                )}
+                                title={(mov.description?.includes('→') || mov.description?.includes('←')) ? "Transferências não podem ser editadas" : "Editar"}
                             >
                                 <Pencil className="w-4 h-4" />
                             </button>
@@ -909,24 +916,72 @@ function RecurringTab({ recurrences, onRefresh, accounts, categories, creditCard
 }
 
 // ============ TRANSFERS TAB ============
-function TransfersTab({ movements, onDelete, onRefresh }: {
+function TransfersTab({ movements, onDelete, onRefresh, accounts }: {
     movements: Movement[];
     onDelete: (id: string) => void;
     onRefresh: () => void;
+    accounts: Account[];
 }) {
+    const [showForm, setShowForm] = useState(false);
     const [editingTransfer, setEditingTransfer] = useState<Movement | null>(null);
     const [formData, setFormData] = useState({
         amount: '',
-        date: ''
+        date: new Date().toISOString().split('T')[0],
+        fromAccountId: '',
+        toAccountId: '',
+        description: ''
     });
     const [saving, setSaving] = useState(false);
 
     // Filter only OUT transfers (contain →) to avoid duplicates
     const outTransfers = movements.filter(m => m.description?.includes('→'));
 
+    const resetForm = () => {
+        setFormData({
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            fromAccountId: '',
+            toAccountId: '',
+            description: ''
+        });
+    };
+
+    const handleCreate = async () => {
+        if (!formData.amount || !formData.fromAccountId || !formData.toAccountId) return;
+
+        if (formData.fromAccountId === formData.toAccountId) {
+            alert('A conta de origem e destino devem ser diferentes.');
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const result = await createTransfer({
+                fromAccountId: formData.fromAccountId,
+                toAccountId: formData.toAccountId,
+                amount: parseFloat(formData.amount),
+                description: formData.description || undefined,
+                date: formData.date
+            });
+
+            if (result.success) {
+                setShowForm(false);
+                resetForm();
+                onRefresh();
+            } else {
+                alert(result.error || 'Erro ao criar transferência');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao criar transferência');
+        }
+        setSaving(false);
+    };
+
     const handleEdit = (mov: Movement) => {
         setEditingTransfer(mov);
         setFormData({
+            ...formData,
             amount: mov.amount.toString(),
             date: mov.date.split('T')[0]
         });
@@ -951,6 +1006,99 @@ function TransfersTab({ movements, onDelete, onRefresh }: {
 
     return (
         <div className="space-y-4">
+            {/* Add Button */}
+            <button
+                onClick={() => { setShowForm(true); setEditingTransfer(null); resetForm(); }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-neutral-700 text-neutral-400 hover:border-blue-500/50 hover:text-blue-400 transition-all"
+            >
+                <Plus className="w-5 h-5" />
+                Nova Transferência
+            </button>
+
+            {/* Create Form */}
+            {showForm && (
+                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-blue-400">Nova Transferência</h3>
+                        <button
+                            onClick={() => { setShowForm(false); resetForm(); }}
+                            className="p-1 text-neutral-400 hover:text-white"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-xs text-neutral-400 ml-1">De (Origem)</label>
+                            <select
+                                value={formData.fromAccountId}
+                                onChange={(e) => setFormData({ ...formData, fromAccountId: e.target.value })}
+                                className="w-full bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+                            >
+                                <option value="">Selecione...</option>
+                                {accounts.map(acc => (
+                                    <option key={acc.id} value={acc.id}>{acc.name} (R$ {acc.balance.toFixed(2)})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs text-neutral-400 ml-1">Para (Destino)</label>
+                            <select
+                                value={formData.toAccountId}
+                                onChange={(e) => setFormData({ ...formData, toAccountId: e.target.value })}
+                                className="w-full bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+                            >
+                                <option value="">Selecione...</option>
+                                {accounts.map(acc => (
+                                    <option key={acc.id} value={acc.id}>{acc.name} (R$ {acc.balance.toFixed(2)})</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <input
+                            type="number"
+                            placeholder="Valor"
+                            value={formData.amount}
+                            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                            className="bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
+                        />
+                        <input
+                            type="date"
+                            value={formData.date}
+                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                            className="bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    <input
+                        type="text"
+                        placeholder="Descrição (opcional)"
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        className="w-full bg-neutral-800 border border-blue-500/30 rounded-lg px-4 py-3 text-white placeholder:text-neutral-500 focus:outline-none focus:border-blue-500"
+                    />
+
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => { setShowForm(false); resetForm(); }}
+                            className="flex-1 py-2.5 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleCreate}
+                            disabled={saving || !formData.amount || !formData.fromAccountId || !formData.toAccountId}
+                            className="flex-1 py-2.5 rounded-lg bg-blue-500 text-white font-semibold hover:bg-blue-400 disabled:opacity-50"
+                        >
+                            {saving ? 'Transferindo...' : 'Confirmar Transferência'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Edit Form */}
             {editingTransfer && (
                 <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-4">

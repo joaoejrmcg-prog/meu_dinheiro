@@ -360,6 +360,35 @@ export async function deleteLastMovement(): Promise<{ success: boolean; error?: 
         }
     }
 
+    // 2b. Check if this is part of a transfer pair (→/← movements created together)
+    if (lastMovement.type === 'transfer' && (lastMovement.description?.includes('→') || lastMovement.description?.includes('←'))) {
+        // Find the paired transfer movement (same date, same amount, same created_at timestamp)
+        const { data: pairMovements } = await supabase
+            .from('movements')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('type', 'transfer')
+            .eq('amount', lastMovement.amount)
+            .eq('date', lastMovement.date)
+            .neq('id', lastMovement.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        if (pairMovements && pairMovements.length > 0) {
+            // Find the matching pair by description pattern (→ matches ←)
+            const isPairMatch = (desc: string) => {
+                if (lastMovement.description?.includes('→') && desc?.includes('←')) return true;
+                if (lastMovement.description?.includes('←') && desc?.includes('→')) return true;
+                return false;
+            };
+            const paired = pairMovements.find((m: any) => isPairMatch(m.description));
+            if (paired) {
+                movementsToDelete = [lastMovement, paired];
+                console.log(`[SMART_UNDO] Found transfer pair: "${lastMovement.description}" + "${paired.description}"`);
+            }
+        }
+    }
+
     // 3. Revert account balances for all paid movements
     for (const mov of movementsToDelete) {
         if (mov.account_id && mov.is_paid) {
@@ -376,6 +405,13 @@ export async function deleteLastMovement(): Promise<{ success: boolean; error?: 
                     newBalance -= mov.amount;
                 } else if (mov.type === 'expense') {
                     newBalance += mov.amount;
+                } else if (mov.type === 'transfer') {
+                    // Transfers: → means money left (add it back), ← means money arrived (subtract it)
+                    if (mov.description?.includes('→')) {
+                        newBalance += mov.amount;
+                    } else if (mov.description?.includes('←')) {
+                        newBalance -= mov.amount;
+                    }
                 }
                 await supabase.from('accounts').update({ balance: newBalance }).eq('id', mov.account_id);
             }
@@ -393,11 +429,17 @@ export async function deleteLastMovement(): Promise<{ success: boolean; error?: 
         return { success: false, error: deleteError.message };
     }
 
-    // Build description based on whether it was a single movement or installment group
+    // Build description based on type
     const baseDescription = lastMovement.description.replace(/\s*\(\d+\/\d+\)$/, ''); // Remove "(X/Y)" suffix
-    const deletedDescription = movementsToDelete.length > 1
-        ? `${baseDescription} (${movementsToDelete.length} parcelas)`
-        : lastMovement.description;
+    let deletedDescription: string;
+    if (lastMovement.type === 'transfer' && movementsToDelete.length === 2) {
+        // Transfer pair
+        deletedDescription = `Transferência: ${lastMovement.description}`;
+    } else if (movementsToDelete.length > 1) {
+        deletedDescription = `${baseDescription} (${movementsToDelete.length} parcelas)`;
+    } else {
+        deletedDescription = lastMovement.description;
+    }
 
     return { success: true, deletedDescription, deletedCount: movementsToDelete.length };
 }

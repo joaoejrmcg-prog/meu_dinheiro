@@ -328,10 +328,8 @@ export async function createTransfer(params: {
             return { success: false, error: 'Conta de origem ou destino não encontrada.' };
         }
 
-        // 2. Check if source has enough balance (skip if allowNegative)
-        if (fromAccount.balance < amount && !params.allowNegative) {
-            return { success: false, error: `Saldo insuficiente. Disponível: R$ ${fromAccount.balance.toFixed(2)}` };
-        }
+        // 2. Balance check removed - accounts may have credit limits (cheque especial)
+        // Transfers always proceed; negative balances are allowed.
 
         // 3. Create OUT movement (from source account)
         const { error: outError } = await supabase

@@ -146,7 +146,9 @@ Sua missão é proteger a verdade dos números. Você não é apenas um chatbot,
    - **Ação**: Apenas calcula e projeta, NÃO registra nada.
 
 5. **DELETE_LAST_MOVEMENT** (Apagar último lançamento)
-   - Gatilhos: "Apaga o último", "Exclui o último lançamento", "Desfaz o último registro", "Cancela isso".
+   - Gatilhos: "Apaga o último", "Exclui o último lançamento", "Desfaz o último registro", "Cancela isso", "Errei", "Desfaz", "Desfazer", "Anula isso", "Remove o último", "Tira isso".
+   - **IMPORTANTE**: Se o usuário disser APENAS "errei", "errei!" ou "me enganei" SEM fornecer um novo valor/descrição, use **DELETE_LAST_MOVEMENT** (não CORRECT_LAST_MOVEMENT).
+   - Só use CORRECT_LAST_MOVEMENT se o usuário fornecer a correção junto (ex: "errei, era 50" ou "errei, foi no Itaú").
    - **Ação**: Remove o movimento mais recente do banco de dados.
 
 5b. **CORRECT_LAST_MOVEMENT** (Corrigir último lançamento) ⚠️ IMPORTANTE
@@ -797,6 +799,9 @@ export async function processCommand(input: string, history: string[] = [], inpu
   let parsedResponse: any = null;
   let userProvidedBankName: string | null = null; // Track if user just provided bank name for PIX/Débito
 
+  // Get current user level for gamification
+  // userLevel is already passed as argument to processCommand
+
 
   // 1. Process Logic with Gemini
   for (const [index, apiKey] of geminiKeys.entries()) {
@@ -903,24 +908,41 @@ export async function processCommand(input: string, history: string[] = [], inpu
   let finalMessage = parsedResponse.message;
   let hitMilestone = false; // Track if user hit 10 actions milestone
 
+  // Normalize hallucinated transfer intents to REGISTER_MOVEMENT
+  if (parsedResponse.intent === 'TRANSFER_BETWEEN_ACCOUNTS' ||
+    parsedResponse.intent === 'TRANSFER' ||
+    parsedResponse.intent === 'MAKE_TRANSFER') {
+    console.log('🔄 [TRANSFER] Normalizing intent from', parsedResponse.intent, 'to REGISTER_MOVEMENT with is_transfer=true');
+    parsedResponse.intent = 'REGISTER_MOVEMENT';
+    if (parsedResponse.data) {
+      parsedResponse.data.is_transfer = true;
+      parsedResponse.data.type = 'transfer';
+    }
+  }
+
   if (parsedResponse.intent === 'REGISTER_MOVEMENT') {
     const d = parsedResponse.data;
 
     // ===== TRANSFER HANDLING =====
     if (d.is_transfer && d.to_account) {
+      console.log('🔄 [TRANSFER] is_transfer=true, to_account=', d.to_account, 'from_account=', d.from_account, 'amount=', d.amount);
       const { getAccountByName, getAccountBalance, getDefaultAccount } = await import('./assets');
       const { createTransfer } = await import('./financial');
 
       // Handle transfer without specifying source account
       let fromAccountName = d.from_account;
-      if (!fromAccountName || fromAccountName.toLowerCase() === d.to_account?.toLowerCase()) {
+      const genericNames = ['conta padrão', 'conta padrao', 'padrão', 'padrao', 'default', 'minha conta', 'conta principal'];
+      const isGenericName = fromAccountName && genericNames.includes(fromAccountName.toLowerCase().trim());
+      if (!fromAccountName || isGenericName || fromAccountName.toLowerCase() === d.to_account?.toLowerCase()) {
         // Try to use default account as origin
         const defaultAcc = await getDefaultAccount();
+        console.log('🔄 [TRANSFER] No from_account specified, defaultAcc=', defaultAcc?.name || 'NULL');
         if (defaultAcc) {
           // Use default account (whatever type it is - wallet or bank)
           fromAccountName = defaultAcc.name;
         } else {
           // No default account set - ask user
+          console.log('🔄 [TRANSFER] ❌ No default account found, asking user');
           finalMessage = `❓ De qual conta você quer transferir? (ex: "da Carteira", "do Nubank")`;
           return {
             intent: parsedResponse.intent as IntentType,
@@ -931,51 +953,36 @@ export async function processCommand(input: string, history: string[] = [], inpu
         }
       }
 
+      console.log('🔄 [TRANSFER] Looking up accounts: from=', fromAccountName, 'to=', d.to_account);
       const fromAcc = await getAccountByName(fromAccountName);
       const toAcc = await getAccountByName(d.to_account);
+      console.log('🔄 [TRANSFER] fromAcc=', fromAcc?.id || 'NOT FOUND', fromAcc?.name || '', 'toAcc=', toAcc?.id || 'NOT FOUND', toAcc?.name || '');
 
       if (!fromAcc || !toAcc) {
         const missingAcc = !fromAcc ? fromAccountName : d.to_account;
+        console.log('🔄 [TRANSFER] ❌ Account not found:', missingAcc);
         finalMessage = `❌ Conta "${missingAcc}" não encontrada. Verifique se você já cadastrou essa conta.`;
       } else {
-        const fromBalance = await getAccountBalance(fromAcc.id);
+        // Execute transfer directly (no balance check - accounts may have credit limits)
+        console.log('🔄 [TRANSFER] Executing createTransfer: from=', fromAcc.name, 'to=', toAcc.name, 'amount=', d.amount);
+        const result = await createTransfer({
+          fromAccountId: fromAcc.id,
+          toAccountId: toAcc.id,
+          amount: d.amount,
+          description: d.description || `Transferência para ${toAcc.name}`,
+          date: d.date || new Date().toISOString().split('T')[0]
+        });
+        console.log('🔄 [TRANSFER] Result:', result);
 
-        if (fromBalance < d.amount) {
-          // Insufficient balance - return confirmation request
-          const formattedBalance = fromBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        if (result.success) {
           const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-          return {
-            intent: 'TRANSFER_CONFIRM_NEGATIVE' as IntentType,
-            data: {
-              ...d,
-              fromAccountId: fromAcc.id,
-              toAccountId: toAcc.id,
-              fromAccountName: fromAcc.name,
-              toAccountName: toAcc.name,
-              currentBalance: fromBalance
-            },
-            message: `⚠️ A conta "${fromAcc.name}" tem apenas ${formattedBalance} e você quer transferir ${formattedAmount}.\n\nQuer fazer assim mesmo e deixar o saldo negativo?`,
-            confidence: 1
-          };
+          finalMessage = `✅ Transferência de ${formattedAmount} de ${fromAcc.name} para ${toAcc.name} realizada!`;
         } else {
-          // Sufficient balance - execute transfer
-          const result = await createTransfer({
-            fromAccountId: fromAcc.id,
-            toAccountId: toAcc.id,
-            amount: d.amount,
-            description: d.description || `Transferência para ${toAcc.name}`,
-            date: d.date || new Date().toISOString().split('T')[0]
-          });
-
-          if (result.success) {
-            const formattedAmount = d.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            finalMessage = `✅ Transferência de ${formattedAmount} de ${fromAcc.name} para ${toAcc.name} realizada!`;
-          } else {
-            finalMessage = `❌ ${result.error}`;
-          }
+          finalMessage = `❌ ${result.error}`;
         }
       }
+    } else if (d.is_transfer) {
+      console.log('🔄 [TRANSFER] is_transfer=true but to_account is MISSING. data=', JSON.stringify(d));
     } else {
       // ===== NORMAL MOVEMENT (not a transfer) =====
       // Logic to determine Card ID
@@ -3156,6 +3163,15 @@ export async function processCommand(input: string, history: string[] = [], inpu
       const buffer = Buffer.from(await mp3.arrayBuffer());
       audioData = buffer.toString('base64');
     } catch (e) { console.error(e); }
+  }
+
+  // Check milestone and suggest level up
+  if (hitMilestone) {
+    const { getNextLevelSuggestion } = await import('./profile-helper');
+    const suggestion = await getNextLevelSuggestion(userLevel);
+    if (suggestion) {
+      finalMessage += suggestion;
+    }
   }
 
   // Handle undefined finalMessage (e.g., multiple transactions or unhandled intent)

@@ -533,8 +533,11 @@ function AccountsTab({ accounts, onRefresh, getAccountIcon, getAccountTypeLabel 
                                                         <p className="text-sm text-white font-medium">{mov.description}</p>
                                                         <p className="text-xs text-neutral-500">{new Date(mov.date).toLocaleDateString('pt-BR')}</p>
                                                     </div>
-                                                    <span className={cn("text-sm font-medium", mov.type === 'income' ? "text-green-400" : "text-red-400")}>
-                                                        {mov.type === 'income' ? '+' : '-'} R$ {mov.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    <span className={cn("text-sm font-medium",
+                                                        (mov.type === 'income' || (mov.type === 'transfer' && mov.description?.includes('←')))
+                                                            ? "text-green-400" : "text-red-400"
+                                                    )}>
+                                                        {(mov.type === 'income' || (mov.type === 'transfer' && mov.description?.includes('←'))) ? '+' : '-'} R$ {mov.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </span>
                                                 </div>
                                             ))}
